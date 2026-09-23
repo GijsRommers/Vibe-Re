@@ -12,11 +12,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Protocol", "VibeRe.P
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Client", "VibeRe.Client\VibeRe.Client.csproj", "{838A1A2B-1149-4A57-B506-A6E6B48C3FE3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Host", "VibeRe.Host\VibeRe.Host.csproj", "{1C8A7CFE-2AE9-4BAE-BA65-8D93778ED43B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Server", "VibeRe.Server\VibeRe.Server.csproj", "{1C8A7CFE-2AE9-4BAE-BA65-8D93778ED43B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Core.Tests", "VibeRe.Core.Tests\VibeRe.Core.Tests.csproj", "{AD90D080-99B7-4CE1-8C53-671BED8C1F24}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Infrastructure.Tests", "VibeRe.Infrastructure.Tests\VibeRe.Infrastructure.Tests.csproj", "{E2E2DFF2-687C-4BD7-BD8A-3741F2777E14}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Domain", "VibeRe.Domain\VibeRe.Domain.csproj", "{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -136,6 +138,18 @@ Global
 		{E2E2DFF2-687C-4BD7-BD8A-3741F2777E14}.Release|x64.Build.0 = Release|Any CPU
 		{E2E2DFF2-687C-4BD7-BD8A-3741F2777E14}.Release|x86.ActiveCfg = Release|Any CPU
 		{E2E2DFF2-687C-4BD7-BD8A-3741F2777E14}.Release|x86.Build.0 = Release|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Debug|x64.Build.0 = Debug|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Debug|x86.Build.0 = Debug|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Release|x64.ActiveCfg = Release|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Release|x64.Build.0 = Release|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Release|x86.ActiveCfg = Release|Any CPU
+		{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

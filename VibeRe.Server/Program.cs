@@ -1,4 +1,4 @@
-using VibeRe.Host.Services;
+using VibeRe.Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 

@@ -2,9 +2,10 @@ using VibeRe.Core.Auth;
 
 namespace VibeRe.Infrastructure.Credentials;
 
-public static class CredentialStores
+/// <summary>Selects the credential store used by the application on this platform.</summary>
+public static class CredentialStoreFactory
 {
-    /// <summary>The OS keychain where supported, otherwise an owner-only file under <see cref="VibeRePaths.Home"/>.</summary>
+    /// <summary>Uses macOS Keychain on macOS and an owner-only file elsewhere.</summary>
     public static ICredentialStore CreateDefault() =>
         OperatingSystem.IsMacOS()
             ? new MacOsKeychainCredentialStore()

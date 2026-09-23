@@ -6,4 +6,8 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <ItemGroup>
+        <ProjectReference Include="..\VibeRe.Domain\VibeRe.Domain.csproj" />
+    </ItemGroup>
+
 </Project>

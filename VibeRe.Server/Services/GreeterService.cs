@@ -1,6 +1,6 @@
 using Grpc.Core;
 
-namespace VibeRe.Host.Services;
+namespace VibeRe.Server.Services;
 
 public class GreeterService(ILogger<GreeterService> logger) : Greeter.GreeterBase
 {

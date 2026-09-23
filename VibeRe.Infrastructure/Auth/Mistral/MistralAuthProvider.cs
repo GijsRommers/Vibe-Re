@@ -44,7 +44,7 @@ public sealed class MistralAuthProvider : IAuthProvider
             using var response = await _http.SendAsync(request, cancellationToken);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             {
-                throw new AuthException("Mistral rejected the API key.", AuthErrorCode.Unauthorized);
+                return await CheckKeyAfterAccountRejectionAsync(credential, cancellationToken);
             }
 
             if (!response.IsSuccessStatusCode)
@@ -63,6 +63,35 @@ public sealed class MistralAuthProvider : IAuthProvider
         return whoami is { PlanType: { } planType }
             ? new AccountInfo(DescribePlan(planType, whoami.PlanName))
             : null;
+    }
+
+    private async Task<AccountInfo?> CheckKeyAfterAccountRejectionAsync(
+        Credential credential, CancellationToken cancellationToken)
+    {
+        // The console's account endpoint can reject a key that the model API recognizes.
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.mistral.ai/v1/models");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.Secret);
+
+        try
+        {
+            using var response = await _http.SendAsync(request, cancellationToken);
+            if (response.StatusCode == HttpStatusCode.PaymentRequired)
+            {
+                throw new AuthException("API access requires a subscription or billing setup.", AuthErrorCode.SubscriptionRequired);
+            }
+
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                throw new AuthException("Mistral rejected the API key.", AuthErrorCode.Unauthorized);
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException
+                                   || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            return null;
+        }
     }
 
     /// <summary>Maps whoami's plan type/name to the labels Mistral Vibe shows.</summary>

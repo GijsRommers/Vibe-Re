@@ -12,6 +12,7 @@ public enum AuthErrorCode
     ProviderError,
     TimedOut,
     Unauthorized,
+    SubscriptionRequired,
     StoreFailed,
 }
 

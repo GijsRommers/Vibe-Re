@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option csharp_namespace = "VibeRe.Host";
+option csharp_namespace = "VibeRe.Server";
 
 package greet;
 

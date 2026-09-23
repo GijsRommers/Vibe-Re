@@ -30,7 +30,7 @@ Console.CancelKeyPress += (_, e) =>
 
 using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 http.DefaultRequestHeaders.UserAgent.ParseAdd("VibeRe/0.1");
-var auth = new AuthService([new MistralAuthProvider(http)], CredentialStores.CreateDefault());
+var auth = new AuthService([new MistralAuthProvider(http)], CredentialStoreFactory.CreateDefault());
 
 try
 {
@@ -100,6 +100,11 @@ static async Task<int> PrintStatusAsync(AuthService auth, IAuthProvider provider
     catch (AuthException ex) when (ex.Code == AuthErrorCode.Unauthorized)
     {
         Console.WriteLine($"{provider.DisplayName}: {source} was rejected. Run `vibe-re auth login --provider {provider.Id}`.");
+        return 1;
+    }
+    catch (AuthException ex) when (ex.Code == AuthErrorCode.SubscriptionRequired)
+    {
+        Console.WriteLine($"{provider.DisplayName}: {source} is recognized, but {ex.Message}");
         return 1;
     }
 }
