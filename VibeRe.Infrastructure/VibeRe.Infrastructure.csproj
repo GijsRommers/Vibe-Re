@@ -1,5 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+    <ItemGroup>
+      <ProjectReference Include="..\VibeRe.Core\VibeRe.Core.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="Auth\Mistral\" />
+    </ItemGroup>
+
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
