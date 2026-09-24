@@ -169,6 +169,62 @@ namespace VibeRe.Infrastructure.Persistence.Migrations
                     b.ToTable("conversation_events", (string)null);
                 });
 
+            modelBuilder.Entity("VibeRe.Domain.Tools.McpServer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.PrimitiveCollection<string>("Arguments")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Command")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Headers")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Transport")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Url")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("mcp_servers", (string)null);
+                });
+
+            modelBuilder.Entity("VibeRe.Domain.Tools.ToolPolicy", b =>
+                {
+                    b.Property<string>("ToolName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Approval")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ToolName");
+
+                    b.ToTable("tool_policies", (string)null);
+                });
+
             modelBuilder.Entity("VibeRe.Domain.Conversations.ContextBranch", b =>
                 {
                     b.HasOne("VibeRe.Domain.Conversations.Conversation", null)

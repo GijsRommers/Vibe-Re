@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using VibeRe.Domain.Conversations;
+using VibeRe.Domain.Tools;
 
 namespace VibeRe.Infrastructure.Persistence;
 
@@ -14,6 +15,10 @@ public sealed class VibeReDbContext(DbContextOptions<VibeReDbContext> options) :
     public DbSet<ContextBlob> ContextBlobs => Set<ContextBlob>();
 
     public DbSet<ContextBranch> ContextBranches => Set<ContextBranch>();
+
+    public DbSet<McpServer> McpServers => Set<McpServer>();
+
+    public DbSet<ToolPolicy> ToolPolicies => Set<ToolPolicy>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

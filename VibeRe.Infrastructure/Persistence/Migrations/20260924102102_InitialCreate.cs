@@ -39,6 +39,37 @@ namespace VibeRe.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "mcp_servers",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", nullable: false),
+                    Transport = table.Column<string>(type: "TEXT", nullable: false),
+                    Enabled = table.Column<bool>(type: "INTEGER", nullable: false),
+                    Command = table.Column<string>(type: "TEXT", nullable: true),
+                    Arguments = table.Column<string>(type: "TEXT", nullable: false),
+                    Environment = table.Column<string>(type: "TEXT", nullable: false),
+                    Url = table.Column<string>(type: "TEXT", nullable: true),
+                    Headers = table.Column<string>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_mcp_servers", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "tool_policies",
+                columns: table => new
+                {
+                    ToolName = table.Column<string>(type: "TEXT", nullable: false),
+                    Approval = table.Column<string>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_tool_policies", x => x.ToolName);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "context_nodes",
                 columns: table => new
                 {
@@ -193,6 +224,12 @@ namespace VibeRe.Infrastructure.Persistence.Migrations
                 name: "IX_conversations_Status_CreatedAt",
                 table: "conversations",
                 columns: new[] { "Status", "CreatedAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_mcp_servers_Name",
+                table: "mcp_servers",
+                column: "Name",
+                unique: true);
         }
 
         /// <inheritdoc />
@@ -203,6 +240,12 @@ namespace VibeRe.Infrastructure.Persistence.Migrations
 
             migrationBuilder.DropTable(
                 name: "conversation_events");
+
+            migrationBuilder.DropTable(
+                name: "mcp_servers");
+
+            migrationBuilder.DropTable(
+                name: "tool_policies");
 
             migrationBuilder.DropTable(
                 name: "context_nodes");
