@@ -26,7 +26,7 @@ public class VibeReDbContextTests
 
         await using (var db = new VibeReDbContext(options))
         {
-            await db.Database.EnsureCreatedAsync();
+            await db.Database.MigrateAsync();
             await new ConversationRepository(db).AddAsync(conversation);
             var events = new ConversationEventStore(db);
             await events.AppendAsync(conversation.Id, 1, "turn/start", "{}", turnId);
@@ -62,6 +62,47 @@ public class VibeReDbContextTests
     }
 
     [Fact]
+    public async Task Migrations_are_in_sync_with_the_model()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new VibeReDbContext(new DbContextOptionsBuilder<VibeReDbContext>().UseSqlite(connection).Options);
+
+        await db.Database.MigrateAsync();
+
+        Assert.False(db.Database.HasPendingModelChanges(), "Run `dotnet ef migrations add` for the model changes.");
+        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+    }
+
+    [Fact]
+    public async Task Finished_conversations_leave_the_active_list_until_reopened()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new VibeReDbContext(new DbContextOptionsBuilder<VibeReDbContext>().UseSqlite(connection).Options);
+        await db.Database.MigrateAsync();
+        var finishedAt = new DateTimeOffset(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
+        var conversations = new ConversationRepository(db, new FixedTimeProvider(finishedAt));
+        var older = new Conversation("Fix the login bug");
+        var newer = new Conversation("Write release notes");
+        await conversations.AddAsync(older);
+        await conversations.AddAsync(newer);
+
+        Assert.Equal([newer.Id, older.Id], (await conversations.ListAsync()).Select(conversation => conversation.Id).ToArray());
+
+        Assert.True(await conversations.FinishAsync(older.Id));
+        Assert.False(await conversations.FinishAsync(Guid.NewGuid()));
+        Assert.Equal([newer.Id], (await conversations.ListAsync()).Select(conversation => conversation.Id).ToArray());
+        var finished = Assert.Single(await conversations.ListAsync(ConversationStatus.Finished));
+        Assert.Equal(older.Id, finished.Id);
+        Assert.Equal(finishedAt.UtcDateTime, finished.FinishedAt);
+
+        Assert.True(await conversations.ReopenAsync(older.Id));
+        Assert.Equal(2, (await conversations.ListAsync()).Count);
+        Assert.Null((await conversations.GetByIdAsync(older.Id))!.FinishedAt);
+    }
+
+    [Fact]
     public void Persistence_registration_resolves_repository_and_event_store()
     {
         using var provider = new ServiceCollection()
@@ -72,5 +113,10 @@ public class VibeReDbContextTests
         Assert.IsType<ConversationRepository>(scope.ServiceProvider.GetRequiredService<IConversationRepository>());
         Assert.IsType<ConversationEventStore>(scope.ServiceProvider.GetRequiredService<IConversationEventStore>());
         Assert.IsType<ContextStore>(scope.ServiceProvider.GetRequiredService<IContextStore>());
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 }

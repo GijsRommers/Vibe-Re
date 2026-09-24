@@ -7,4 +7,7 @@ public static class VibeRePaths
         Environment.GetEnvironmentVariable("VIBE_RE_HOME") is { Length: > 0 } home
             ? Path.GetFullPath(home)
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".vibe-re");
+
+    /// <summary>The SQLite database holding conversations and their context trees.</summary>
+    public static string Database => Path.Combine(Home, "vibe-re.db");
 }

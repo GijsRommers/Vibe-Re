@@ -3,6 +3,7 @@ using VibeRe.Application.Auth;
 using VibeRe.Infrastructure;
 using VibeRe.Infrastructure.Auth.Mistral;
 using VibeRe.Infrastructure.Credentials;
+using VibeRe.Infrastructure.Persistence;
 using VibeRe.Protocol;
 using VibeRe.Server.Services;
 
@@ -36,7 +37,12 @@ builder.Services.AddSingleton(services => new AuthService(
     services.GetServices<IAuthProvider>(),
     services.GetRequiredService<ICredentialStore>()));
 
+Directory.CreateDirectory(VibeRePaths.Home);
+builder.Services.AddVibeRePersistence($"Data Source={VibeRePaths.Database}");
+
 var app = builder.Build();
+
+await app.Services.MigrateVibeReDatabaseAsync();
 
 app.MapGrpcService<AuthGrpcService>();
 

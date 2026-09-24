@@ -17,7 +17,7 @@ public sealed class ContextStoreTests : IAsyncLifetime
         await _connection.OpenAsync();
         _options = new DbContextOptionsBuilder<VibeReDbContext>().UseSqlite(_connection).Options;
         await using var db = new VibeReDbContext(_options);
-        await db.Database.EnsureCreatedAsync();
+        await db.Database.MigrateAsync();
     }
 
     public Task DisposeAsync() => _connection.DisposeAsync().AsTask();

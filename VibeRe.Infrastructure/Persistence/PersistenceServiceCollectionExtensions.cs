@@ -17,4 +17,11 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IContextStore, ContextStore>();
         return services;
     }
+
+    /// <summary>Creates or upgrades the database to the latest migration.</summary>
+    public static async Task MigrateVibeReDatabaseAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
+    {
+        await using var scope = services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<VibeReDbContext>().Database.MigrateAsync(cancellationToken);
+    }
 }
