@@ -17,12 +17,25 @@ Status: proposal. The code in this commit is a working skeleton that shows the s
 ## Layers
 
 ```
-Domain          McpServer (stdio | http config), ToolPolicy (Ask | Allow | Deny)
-Application     ITool, IToolSource, IToolApprover, ToolRegistry
-                IMcpServerRepository, IToolPolicyStore
-Infrastructure  EF configs + repositories (SQLite)
-                Tools/Mcp: McpClientPool, McpToolSource, McpTool (ModelContextProtocol.Core SDK)
-                AddVibeReTools()
+Domain                     McpServer (stdio | http config), ToolPolicy (Ask | Allow | Deny)
+Application                ITool, IToolSource, IToolApprover, ToolRegistry
+                           IMcpServerRepository, IToolPolicyStore
+Infrastructure             EF configs + repositories (SQLite), incl. mcp_servers / tool_policies
+Infrastructure.Mcp         McpClientPool, McpToolSource, McpTool   – only project using the MCP SDK
+Tools                      Built-in tools as an IToolSource; registers ToolRegistry
+```
+
+Interfaces (ports) live in Application and implementations (adapters) live in their own projects, so no single
+Infrastructure project collects every dependency. `ToolRegistry` is a concrete Application class, like
+`AuthService`. It holds the rules (merging tools, approval gating), not storage. What it reads from SQLite
+comes in through `IToolPolicyStore`.
+
+A host composes everything:
+
+```csharp
+services.AddVibeRePersistence(connectionString)  // SQLite, repositories
+        .AddVibeReTools()                         // ToolRegistry + built-in tools
+        .AddVibeReMcp();                          // MCP servers as another IToolSource
 ```
 
 ### `ITool`
@@ -70,6 +83,30 @@ practice a clash means two built-ins share a name.
 - Only text content is forwarded for now. Images and resources get a placeholder until the model layer can
   carry non-text content.
 
+### Built-in tools (`VibeRe.Tools`)
+
+| Tool | What it does |
+|---|---|
+| `read_file` | Returns lines with 1-based numbers, paged with `offset`/`limit`. Refuses binaries and directories. |
+| `create_file` | Creates a file and any missing parent directories. Only overwrites when `overwrite: true`. |
+| `edit_file` | Replaces exact text. `old_string` must be unique unless `replace_all` is set. |
+| `list_directory` | Lists one directory. Directories end with `/`. |
+| `grep` | Runs ripgrep with `files_with_matches` / `content` / `count` modes, glob filter, case and context options. |
+| `find_files` | Finds files by glob, via `rg --files`. |
+
+- Each tool extends `BuiltinTool<TArguments>`. The JSON Schema is generated from the argument record:
+  snake_case names, `[Description]`s become descriptions, and constructor parameters without defaults become
+  required. Arguments are validated against the same contract, so unknown or mistyped fields go back to the
+  model as errors.
+- Paths resolve against `ToolContext.WorkingDirectory`. Anything outside it is refused. Symlinks that point
+  outside aren't handled yet.
+- Ripgrep search behavior:
+  - respects `.gitignore`, includes hidden files, and skips `.git`
+  - sorts results by path, so the output is deterministic
+  - stops early after `max_results` lines, and times out after 30 s
+- Ripgrep is not bundled. The tools use `$VIBE_RE_RG_PATH`, or `rg` on the `PATH`, and explain how to install
+  it when it's missing. Its tests are skipped when ripgrep isn't available.
+
 ### Storage
 
 ```
@@ -98,7 +135,8 @@ an `mcp.json` importer can write into the same table.
 
 ## Next steps
 
-- Built-in tools (`read_file`, `write_file`, `bash`, `grep`, ...) as an `IToolSource` registered in DI.
+- More built-ins: `bash` (needs its own design for timeouts, background processes and sandboxing), `web_fetch`.
+- Ship ripgrep with `make install`, or at least check for it, so search works out of the box.
 - A `tools.proto` gRPC service: list tools, set policies, and add, remove, or enable MCP servers, plus an
   approval stream.
 - CLI: `vibe-re mcp add <name> -- <command> [args...]`, `vibe-re mcp list`, `vibe-re tools allow <name>`.

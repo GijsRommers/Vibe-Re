@@ -4,7 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using VibeRe.Domain.Tools;
 
-namespace VibeRe.Infrastructure.Tools.Mcp;
+namespace VibeRe.Infrastructure.Mcp;
 
 /// <summary>
 /// Keeps one live MCP client per configured server for the lifetime of the process. A server whose

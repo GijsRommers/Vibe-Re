@@ -4,7 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using VibeRe.Application.Tools;
 
-namespace VibeRe.Infrastructure.Tools.Mcp;
+namespace VibeRe.Infrastructure.Mcp;
 
 /// <summary>Adapts one tool of an MCP server to <see cref="ITool"/>, namespaced by the server's name.</summary>
 internal sealed class McpTool(string serverName, McpClientTool tool) : ITool

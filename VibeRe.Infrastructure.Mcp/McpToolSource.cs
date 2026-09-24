@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using VibeRe.Application.Tools;
 
-namespace VibeRe.Infrastructure.Tools.Mcp;
+namespace VibeRe.Infrastructure.Mcp;
 
 /// <summary>
 /// Exposes the tools of every enabled MCP server in <see cref="IMcpServerRepository"/>. A server that fails
