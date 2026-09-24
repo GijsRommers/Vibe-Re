@@ -93,6 +93,8 @@ practice a clash means two built-ins share a name.
 | `list_directory` | Lists one directory. Directories end with `/`. |
 | `grep` | Runs ripgrep with `files_with_matches` / `content` / `count` modes, glob filter, case and context options. |
 | `find_files` | Finds files by glob, via `rg --files`. |
+| `search_docs` | Keyword search over VibeRe's own user guide (`docs/guide`), returning the best-matching sections. |
+| `read_doc` | Reads one guide page in full, or lists the pages. |
 
 - Each tool extends `BuiltinTool<TArguments>`. The JSON Schema is generated from the argument record:
   snake_case names, `[Description]`s become descriptions, and constructor parameters without defaults become
@@ -106,6 +108,18 @@ practice a clash means two built-ins share a name.
   - stops early after `max_results` lines, and times out after 30 s
 - Ripgrep is not bundled. The tools use `$VIBE_RE_RG_PATH`, or `rg` on the `PATH`, and explain how to install
   it when it's missing. Its tests are skipped when ripgrep isn't available.
+
+### Own documentation
+
+The user guide in `docs/guide/*.md` is embedded in `VibeRe.Tools` at build time, so the docs the agent sees
+always match the installed version and work offline.
+
+- This is a built-in tool rather than an MCP server because nothing outside VibeRe needs it yet, and a built-in
+  tool needs no extra process or configuration.
+- If other agents (for example Claude Code working on this repo) should query the docs, `vibe-re-server` could
+  expose the same `DocsLibrary` as an MCP endpoint later.
+- Search is keyword ranking over heading-delimited sections. Heading matches weigh more, and terms are cut to 6
+  characters as crude stemming. The guide is small enough that this beats pulling in an embedding model.
 
 ### Storage
 

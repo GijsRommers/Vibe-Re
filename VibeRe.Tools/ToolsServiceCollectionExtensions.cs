@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using VibeRe.Application.Tools;
+using VibeRe.Tools.Docs;
 using VibeRe.Tools.Search;
 
 namespace VibeRe.Tools;
@@ -13,6 +14,7 @@ public static class ToolsServiceCollectionExtensions
     public static IServiceCollection AddVibeReTools(this IServiceCollection services)
     {
         services.AddSingleton(_ => new Ripgrep());
+        services.AddSingleton(_ => DocsLibrary.LoadEmbedded());
         services.AddSingleton<IToolSource, BuiltinToolSource>();
         services.AddScoped<ToolRegistry>();
         return services;

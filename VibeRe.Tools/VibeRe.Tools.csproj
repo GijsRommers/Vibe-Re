@@ -8,6 +8,11 @@
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
     </ItemGroup>
 
+    <!-- The user guide ships inside the binary, so search_docs always matches the installed version. -->
+    <ItemGroup>
+        <EmbeddedResource Include="..\docs\guide\**\*.md" LogicalName="docs/%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+
     <ItemGroup>
         <InternalsVisibleTo Include="VibeRe.Tools.Tests" />
     </ItemGroup>
