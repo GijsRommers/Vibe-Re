@@ -25,10 +25,14 @@ public sealed record ToolResult(string Content, bool IsError = false)
     public static ToolResult Error(string message) => new(message, IsError: true);
 }
 
-/// <summary>A group of tools that is discovered together: the built-ins, or everything from MCP servers.</summary>
+/// <summary>
+/// A group of tools that is discovered together: the built-ins, everything from MCP servers, or the actions
+/// in the project's <c>vibe.re</c> file. The context says where the tools will run, since some sources (like
+/// project actions) depend on the working directory.
+/// </summary>
 public interface IToolSource
 {
-    Task<IReadOnlyList<ITool>> GetToolsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ITool>> GetToolsAsync(ToolContext context, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The front end that confirms <see cref="Domain.Tools.ToolApproval.Ask"/> tool calls with the user.</summary>

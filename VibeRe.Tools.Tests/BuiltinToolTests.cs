@@ -1,4 +1,5 @@
 using System.Text.Json;
+using VibeRe.Application.Tools;
 using VibeRe.Tools.Docs;
 using VibeRe.Tools.Files;
 using VibeRe.Tools.Search;
@@ -38,7 +39,8 @@ public class BuiltinToolTests
     [Fact]
     public async Task Built_in_tools_have_unique_names()
     {
-        var tools = await new BuiltinToolSource(new Ripgrep(), DocsLibrary.LoadEmbedded()).GetToolsAsync();
+        var tools = await new BuiltinToolSource(new Ripgrep(), DocsLibrary.LoadEmbedded())
+            .GetToolsAsync(new ToolContext(Guid.NewGuid(), Path.GetTempPath()));
 
         Assert.Equal(
             ["create_file", "edit_file", "find_files", "grep", "list_directory", "read_doc", "read_file", "search_docs"],
