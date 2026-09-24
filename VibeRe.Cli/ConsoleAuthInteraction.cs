@@ -4,7 +4,7 @@ using VibeRe.Client;
 
 namespace VibeRe.Cli;
 
-internal sealed class ConsoleAuthInteraction(bool openBrowser) : ISignInInteraction
+internal sealed class ConsoleAuthInteraction : ISignInInteraction
 {
     public void ReportStage(SignInStage stage)
     {
@@ -22,7 +22,7 @@ internal sealed class ConsoleAuthInteraction(bool openBrowser) : ISignInInteract
 
     public void OpenSignInUrl(Uri url, DateTimeOffset expiresAt)
     {
-        var opened = openBrowser && TryOpenBrowser(url);
+        var opened = TryOpenBrowser(url);
         Console.WriteLine(opened
             ? "Opened your browser to sign in. If it didn't open, visit:"
             : "Open this URL in a browser to sign in:");

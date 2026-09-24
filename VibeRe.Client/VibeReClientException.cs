@@ -4,8 +4,8 @@ namespace VibeRe.Client;
 public class VibeReClientException(string message, Exception? innerException = null)
     : Exception(message, innerException);
 
-public sealed class ServerUnavailableException(Uri address, Exception? innerException = null)
-    : VibeReClientException($"Couldn't reach the VibeRe server at {address}. Is it running?", innerException)
+public sealed class ServerUnavailableException(Uri address, string? message = null, Exception? innerException = null)
+    : VibeReClientException(message ?? $"Couldn't reach the VibeRe server at {address}. Is it running?", innerException)
 {
     public Uri Address { get; } = address;
 }

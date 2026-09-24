@@ -1,4 +1,5 @@
 using Grpc.Net.Client;
+using VibeRe.Protocol;
 
 namespace VibeRe.Client;
 
@@ -6,7 +7,7 @@ namespace VibeRe.Client;
 public sealed class VibeReClient : IDisposable
 {
     /// <summary>Where the server listens unless <c>$VIBE_RE_SERVER</c> says otherwise.</summary>
-    public static readonly Uri DefaultAddress = new("http://localhost:5067");
+    public static readonly Uri DefaultAddress = ServerDefaults.Address;
 
     private readonly GrpcChannel _channel;
 
@@ -20,6 +21,12 @@ public sealed class VibeReClient : IDisposable
     public Uri Address { get; }
 
     public AuthClient Auth { get; }
+
+    /// <summary>
+    /// Starts <c>vibe-re-server</c> in the background if <see cref="Address"/> is local and nothing is listening yet.
+    /// </summary>
+    public Task EnsureServerRunningAsync(CancellationToken cancellationToken = default) =>
+        LocalServer.EnsureRunningAsync(Address, cancellationToken);
 
     public void Dispose() => _channel.Dispose();
 

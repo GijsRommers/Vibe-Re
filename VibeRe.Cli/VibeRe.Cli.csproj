@@ -2,6 +2,7 @@
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
+        <AssemblyName>vibe-re</AssemblyName>
     </PropertyGroup>
 
     <ItemGroup>

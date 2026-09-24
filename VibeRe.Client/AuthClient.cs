@@ -135,7 +135,7 @@ public sealed class AuthClient
     {
         StatusCode.Cancelled when cancellationToken.IsCancellationRequested =>
             new OperationCanceledException(exception.Status.Detail, exception, cancellationToken),
-        StatusCode.Unavailable => new ServerUnavailableException(_address, exception),
+        StatusCode.Unavailable => new ServerUnavailableException(_address, innerException: exception),
         _ => new VibeReClientException(exception.Status.Detail, exception),
     };
 

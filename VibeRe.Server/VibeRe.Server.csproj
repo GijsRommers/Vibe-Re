@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+    <PropertyGroup>
+        <AssemblyName>vibe-re-server</AssemblyName>
+    </PropertyGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj" />
         <ProjectReference Include="..\VibeRe.Infrastructure\VibeRe.Infrastructure.csproj" />
