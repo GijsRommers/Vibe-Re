@@ -20,6 +20,8 @@ public sealed class BuiltinToolSource(Ripgrep ripgrep, DocsLibrary docs) : ITool
         new ReadDocTool(docs),
     ];
 
-    public Task<IReadOnlyList<ITool>> GetToolsAsync(CancellationToken cancellationToken = default) =>
+    public Task<IReadOnlyList<ITool>> GetToolsAsync(
+        ToolContext context,
+        CancellationToken cancellationToken = default) =>
         Task.FromResult(_tools);
 }

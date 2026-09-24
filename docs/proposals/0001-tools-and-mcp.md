@@ -60,8 +60,8 @@ converts them. A built-in tool can deserialize into its own record type if it wa
 
 `ToolRegistry(IEnumerable<IToolSource>, IToolPolicyStore)`:
 
-- `ListAsync()`: every tool plus its effective approval. Denied tools are included, for settings UIs.
-- `GetAvailableAsync()`: the tools to advertise to the model. Anything denied is left out.
+- `ListAsync(context)`: every tool plus its effective approval. Denied tools are included, for settings UIs.
+- `GetAvailableAsync(context)`: the tools to advertise to the model. Anything denied is left out.
 - `InvokeAsync(name, args, context, approver)`: runs the call. Unknown, denied, declined, and throwing calls
   return `ToolResult { IsError = true }` so the model can recover. Only cancellation propagates.
 

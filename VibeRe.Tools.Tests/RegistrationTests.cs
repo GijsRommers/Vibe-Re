@@ -15,7 +15,8 @@ public class RegistrationTests
             .BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
 
-        var tools = await scope.ServiceProvider.GetRequiredService<ToolRegistry>().ListAsync();
+        var tools = await scope.ServiceProvider.GetRequiredService<ToolRegistry>()
+            .ListAsync(new ToolContext(Guid.NewGuid(), Path.GetTempPath()));
 
         Assert.Contains(tools, entry => entry.Tool.Name == "grep" && entry.Approval == ToolApproval.Ask);
     }
