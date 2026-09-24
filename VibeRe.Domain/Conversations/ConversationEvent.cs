@@ -2,7 +2,10 @@ using System.Text.Json;
 
 namespace VibeRe.Domain.Conversations;
 
-/// <summary>One immutable entry in a conversation's ordered event log.</summary>
+/// <summary>
+/// One immutable entry in a conversation's ordered trace log (streaming, steps, usage, errors). What the model
+/// sees lives in the <see cref="ContextNode"/> tree; <see cref="NodeId"/> ties an event to the message it produced.
+/// </summary>
 public sealed class ConversationEvent
 {
     private ConversationEvent() { }
@@ -13,7 +16,8 @@ public sealed class ConversationEvent
         string kind,
         string dataJson,
         Guid? turnId = null,
-        Guid? stepId = null)
+        Guid? stepId = null,
+        Guid? nodeId = null)
     {
         if (conversationId == Guid.Empty)
         {
@@ -24,7 +28,7 @@ public sealed class ConversationEvent
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
         ArgumentException.ThrowIfNullOrWhiteSpace(dataJson);
         using var _ = JsonDocument.Parse(dataJson);
-        if (turnId == Guid.Empty || stepId == Guid.Empty || (stepId is not null && turnId is null))
+        if (turnId == Guid.Empty || stepId == Guid.Empty || nodeId == Guid.Empty || (stepId is not null && turnId is null))
         {
             throw new ArgumentException("A step must belong to a turn, and IDs cannot be empty.");
         }
@@ -35,6 +39,7 @@ public sealed class ConversationEvent
         DataJson = dataJson;
         TurnId = turnId;
         StepId = stepId;
+        NodeId = nodeId;
     }
 
     public Guid Id { get; private set; } = Guid.NewGuid();
@@ -50,4 +55,6 @@ public sealed class ConversationEvent
     public Guid? TurnId { get; private set; }
 
     public Guid? StepId { get; private set; }
+
+    public Guid? NodeId { get; private set; }
 }

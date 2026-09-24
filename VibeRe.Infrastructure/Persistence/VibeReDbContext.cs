@@ -10,6 +10,12 @@ public sealed class VibeReDbContext(DbContextOptions<VibeReDbContext> options) :
 
     public DbSet<ConversationEvent> ConversationEvents => Set<ConversationEvent>();
 
+    public DbSet<ContextNode> ContextNodes => Set<ContextNode>();
+
+    public DbSet<ContextBlob> ContextBlobs => Set<ContextBlob>();
+
+    public DbSet<ContextBranch> ContextBranches => Set<ContextBranch>();
+
     public DbSet<McpServer> McpServers => Set<McpServer>();
 
     public DbSet<ToolPolicy> ToolPolicies => Set<ToolPolicy>();

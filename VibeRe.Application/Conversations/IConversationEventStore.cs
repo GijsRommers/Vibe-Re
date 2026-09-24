@@ -11,6 +11,7 @@ public interface IConversationEventStore
         string dataJson,
         Guid? turnId = null,
         Guid? stepId = null,
+        Guid? nodeId = null,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ConversationEvent>> ReadAsync(

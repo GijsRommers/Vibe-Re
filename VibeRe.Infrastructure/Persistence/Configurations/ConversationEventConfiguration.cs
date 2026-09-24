@@ -19,5 +19,9 @@ public sealed class ConversationEventConfiguration : IEntityTypeConfiguration<Co
             .WithMany()
             .HasForeignKey(entry => entry.ConversationId)
             .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<ContextNode>()
+            .WithMany()
+            .HasForeignKey(entry => entry.NodeId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -12,5 +12,7 @@ public sealed class ConversationConfiguration : IEntityTypeConfiguration<Convers
         builder.HasKey(conversation => conversation.Id);
         builder.Property(conversation => conversation.Id).ValueGeneratedNever();
         builder.Property(conversation => conversation.Title).IsRequired();
+        builder.Property(conversation => conversation.Status).HasConversion<string>().IsRequired();
+        builder.HasIndex(conversation => new { conversation.Status, conversation.CreatedAt });
     }
 }
