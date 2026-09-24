@@ -71,5 +71,6 @@ public class VibeReDbContextTests
 
         Assert.IsType<ConversationRepository>(scope.ServiceProvider.GetRequiredService<IConversationRepository>());
         Assert.IsType<ConversationEventStore>(scope.ServiceProvider.GetRequiredService<IConversationEventStore>());
+        Assert.IsType<ContextStore>(scope.ServiceProvider.GetRequiredService<IContextStore>());
     }
 }

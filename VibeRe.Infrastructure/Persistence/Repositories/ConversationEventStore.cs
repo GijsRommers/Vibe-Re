@@ -13,9 +13,10 @@ public sealed class ConversationEventStore(VibeReDbContext db) : IConversationEv
         string dataJson,
         Guid? turnId = null,
         Guid? stepId = null,
+        Guid? nodeId = null,
         CancellationToken cancellationToken = default)
     {
-        var entry = new ConversationEvent(conversationId, expectedNextSequence, kind, dataJson, turnId, stepId);
+        var entry = new ConversationEvent(conversationId, expectedNextSequence, kind, dataJson, turnId, stepId, nodeId);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
         var lastSequence = await db.ConversationEvents

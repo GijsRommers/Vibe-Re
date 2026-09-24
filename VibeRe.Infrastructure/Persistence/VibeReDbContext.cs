@@ -9,6 +9,12 @@ public sealed class VibeReDbContext(DbContextOptions<VibeReDbContext> options) :
 
     public DbSet<ConversationEvent> ConversationEvents => Set<ConversationEvent>();
 
+    public DbSet<ContextNode> ContextNodes => Set<ContextNode>();
+
+    public DbSet<ContextBlob> ContextBlobs => Set<ContextBlob>();
+
+    public DbSet<ContextBranch> ContextBranches => Set<ContextBranch>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(VibeReDbContext).Assembly);
