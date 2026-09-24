@@ -16,7 +16,7 @@ public class ToolRegistryTests
         var registry = new ToolRegistry([new Source(new EchoTool("allowed"), new EchoTool("denied"), new EchoTool("asked"))], policies);
         var approver = new Approver(answer: false);
 
-        Assert.Equal(["allowed", "asked"], (await registry.GetAvailableAsync()).Select(tool => tool.Name));
+        Assert.Equal(["allowed", "asked"], (await registry.GetAvailableAsync(Context)).Select(tool => tool.Name));
         Assert.Equal(new ToolResult("allowed ran"), await registry.InvokeAsync("allowed", NoArguments, Context, approver));
         Assert.Empty(approver.Asked);
 
@@ -48,8 +48,8 @@ public class ToolRegistryTests
         var duplicate = new ToolRegistry([new Source(new EchoTool("read")), new Source(new EchoTool("read"))], new InMemoryPolicies());
         var invalid = new ToolRegistry([new Source(new EchoTool("read file"))], new InMemoryPolicies());
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => duplicate.ListAsync());
-        await Assert.ThrowsAsync<InvalidOperationException>(() => invalid.ListAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => duplicate.ListAsync(Context));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => invalid.ListAsync(Context));
     }
 
     private sealed class EchoTool(string name, bool fail = false) : ITool
@@ -66,7 +66,7 @@ public class ToolRegistryTests
 
     private sealed class Source(params ITool[] tools) : IToolSource
     {
-        public Task<IReadOnlyList<ITool>> GetToolsAsync(CancellationToken cancellationToken = default) =>
+        public Task<IReadOnlyList<ITool>> GetToolsAsync(ToolContext context, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ITool>>(tools);
     }
 

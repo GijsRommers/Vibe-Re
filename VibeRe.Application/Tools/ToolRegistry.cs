@@ -13,13 +13,15 @@ public sealed record RegisteredTool(ITool Tool, ToolApproval Approval);
 public sealed partial class ToolRegistry(IEnumerable<IToolSource> sources, IToolPolicyStore policies)
 {
     /// <summary>All tools with their effective approval, including denied ones (for settings UIs).</summary>
-    public async Task<IReadOnlyList<RegisteredTool>> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RegisteredTool>> ListAsync(
+        ToolContext context,
+        CancellationToken cancellationToken = default)
     {
         var approvals = await policies.GetAllAsync(cancellationToken);
         var tools = new Dictionary<string, RegisteredTool>(StringComparer.Ordinal);
         foreach (var source in sources)
         {
-            foreach (var tool in await source.GetToolsAsync(cancellationToken))
+            foreach (var tool in await source.GetToolsAsync(context, cancellationToken))
             {
                 if (!NamePattern().IsMatch(tool.Name))
                 {
@@ -38,8 +40,10 @@ public sealed partial class ToolRegistry(IEnumerable<IToolSource> sources, ITool
     }
 
     /// <summary>The tools to offer the model: everything that isn't denied.</summary>
-    public async Task<IReadOnlyList<ITool>> GetAvailableAsync(CancellationToken cancellationToken = default) =>
-        (await ListAsync(cancellationToken))
+    public async Task<IReadOnlyList<ITool>> GetAvailableAsync(
+        ToolContext context,
+        CancellationToken cancellationToken = default) =>
+        (await ListAsync(context, cancellationToken))
             .Where(entry => entry.Approval != ToolApproval.Deny)
             .Select(entry => entry.Tool)
             .ToList();
@@ -55,7 +59,7 @@ public sealed partial class ToolRegistry(IEnumerable<IToolSource> sources, ITool
         IToolApprover approver,
         CancellationToken cancellationToken = default)
     {
-        var entry = (await ListAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Tool.Name == name);
+        var entry = (await ListAsync(context, cancellationToken)).FirstOrDefault(candidate => candidate.Tool.Name == name);
         if (entry is null)
         {
             return ToolResult.Error($"Unknown tool '{name}'.");

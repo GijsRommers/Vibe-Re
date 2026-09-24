@@ -13,7 +13,9 @@ public sealed class McpToolSource(
     McpClientPool pool,
     ILogger<McpToolSource>? logger = null) : IToolSource
 {
-    public async Task<IReadOnlyList<ITool>> GetToolsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ITool>> GetToolsAsync(
+        ToolContext context,
+        CancellationToken cancellationToken = default)
     {
         var enabled = (await servers.ListAsync(cancellationToken)).Where(server => server.Enabled).ToList();
         pool.RetainOnly(enabled.Select(server => server.Id));
