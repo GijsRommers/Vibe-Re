@@ -17,7 +17,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\VibeRe.Core\VibeRe.Core.csproj"/>
+        <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj" />
         <ProjectReference Include="..\VibeRe.Infrastructure\VibeRe.Infrastructure.csproj"/>
     </ItemGroup>
 
