@@ -1,7 +1,5 @@
 using VibeRe.Cli;
-using VibeRe.Core.Auth;
-using VibeRe.Infrastructure.Auth.Mistral;
-using VibeRe.Infrastructure.Credentials;
+using VibeRe.Client;
 
 const string usage = """
     Usage:
@@ -13,6 +11,8 @@ const string usage = """
       --provider <id>  Provider to authenticate with (default: mistral)
       --method <id>    Sign-in method, e.g. browser or api-key (default: the provider's preferred method)
       --no-browser     Print the sign-in URL instead of opening a browser
+
+    Talks to the VibeRe server at $VIBE_RE_SERVER (default: http://localhost:5067).
     """;
 
 if (args is not ["auth", var command, .. var rest] || !TryParseOptions(rest, out var options))
@@ -28,34 +28,33 @@ Console.CancelKeyPress += (_, e) =>
     cts.Cancel();
 };
 
-using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-http.DefaultRequestHeaders.UserAgent.ParseAdd("VibeRe/0.1");
-var auth = new AuthService([new MistralAuthProvider(http)], CredentialStoreFactory.CreateDefault());
+using var client = new VibeReClient();
 
 try
 {
-    var provider = auth.GetProvider(options.Provider);
     switch (command)
     {
         case "login":
-            await auth.SignInAsync(provider.Id, options.Method, new ConsoleAuthInteraction(options.OpenBrowser), cts.Token);
-            Console.WriteLine($"Signed in to {provider.DisplayName}.");
-            if ((await auth.GetStateAsync(provider.Id, cts.Token)).ActiveSource == CredentialSource.Environment)
+            var signIn = await client.Auth.SignInAsync(
+                options.Provider, options.Method, new ConsoleAuthInteraction(options.OpenBrowser), cts.Token);
+            Console.WriteLine($"Signed in to {signIn.Provider.DisplayName}.");
+            if (signIn.ActiveSource == CredentialSource.Environment)
             {
-                Console.WriteLine($"Note: ${provider.ApiKeyEnvironmentVariable} is set and takes precedence over the stored key.");
+                Console.WriteLine($"Note: ${signIn.Provider.ApiKeyEnvironmentVariable} is set on the server and takes precedence over the stored key.");
             }
 
             return 0;
 
         case "status":
-            return await PrintStatusAsync(auth, provider, cts.Token);
+            return await PrintStatusAsync(client, options.Provider, cts.Token);
 
         case "logout":
-            var removed = await auth.SignOutAsync(provider.Id, cts.Token);
-            Console.WriteLine(removed ? $"Signed out of {provider.DisplayName}." : $"No stored {provider.DisplayName} credential.");
-            if ((await auth.GetStateAsync(provider.Id, cts.Token)).ActiveSource == CredentialSource.Environment)
+            var signOut = await client.Auth.SignOutAsync(options.Provider, cts.Token);
+            var provider = signOut.Provider;
+            Console.WriteLine(signOut.Removed ? $"Signed out of {provider.DisplayName}." : $"No stored {provider.DisplayName} credential.");
+            if (signOut.ActiveSource == CredentialSource.Environment)
             {
-                Console.WriteLine($"Note: ${provider.ApiKeyEnvironmentVariable} is still set; unset it to fully sign out.");
+                Console.WriteLine($"Note: ${provider.ApiKeyEnvironmentVariable} is still set on the server; unset it to fully sign out.");
             }
 
             return 0;
@@ -70,42 +69,35 @@ catch (OperationCanceledException) when (cts.IsCancellationRequested)
     Console.Error.WriteLine("Cancelled.");
     return 130;
 }
-catch (Exception ex) when (ex is AuthException or ArgumentException)
+catch (VibeReClientException ex)
 {
     Console.Error.WriteLine($"Error: {ex.Message}");
     return 1;
 }
 
-static async Task<int> PrintStatusAsync(AuthService auth, IAuthProvider provider, CancellationToken cancellationToken)
+static async Task<int> PrintStatusAsync(VibeReClient client, string providerId, CancellationToken cancellationToken)
 {
-    var state = await auth.GetStateAsync(provider.Id, cancellationToken);
-    var credential = await auth.ResolveCredentialAsync(provider.Id, cancellationToken);
-    if (credential is null)
-    {
-        Console.WriteLine($"{provider.DisplayName}: signed out. Run `vibe-re auth login --provider {provider.Id}`.");
-        return 1;
-    }
-
-    var source = state.ActiveSource == CredentialSource.Environment
-        ? $"${state.EnvironmentVariable}"
+    var status = await client.Auth.GetStatusAsync(providerId, cancellationToken);
+    var provider = status.Provider;
+    var source = status.ActiveSource == CredentialSource.Environment
+        ? $"${provider.ApiKeyEnvironmentVariable}"
         : "the stored key";
-    try
+    switch (status.AccountStatus)
     {
-        var account = await provider.GetAccountAsync(credential, cancellationToken);
-        Console.WriteLine(account is null
-            ? $"{provider.DisplayName}: signed in using {source} (account details unavailable)."
-            : $"{provider.DisplayName}: signed in using {source}, plan: {account.Plan}.");
-        return 0;
-    }
-    catch (AuthException ex) when (ex.Code == AuthErrorCode.Unauthorized)
-    {
-        Console.WriteLine($"{provider.DisplayName}: {source} was rejected. Run `vibe-re auth login --provider {provider.Id}`.");
-        return 1;
-    }
-    catch (AuthException ex) when (ex.Code == AuthErrorCode.SubscriptionRequired)
-    {
-        Console.WriteLine($"{provider.DisplayName}: {source} is recognized, but {ex.Message}");
-        return 1;
+        case AccountStatus.Active:
+            Console.WriteLine(status.Plan is not null
+                ? $"{provider.DisplayName}: signed in using {source}, plan: {status.Plan}."
+                : $"{provider.DisplayName}: signed in using {source} (account details unavailable).");
+            return 0;
+        case AccountStatus.Rejected:
+            Console.WriteLine($"{provider.DisplayName}: {source} was rejected. Run `vibe-re auth login --provider {provider.Id}`.");
+            return 1;
+        case AccountStatus.SubscriptionRequired:
+            Console.WriteLine($"{provider.DisplayName}: {source} is recognized, but {status.Message}");
+            return 1;
+        default:
+            Console.WriteLine($"{provider.DisplayName}: signed out. Run `vibe-re auth login --provider {provider.Id}`.");
+            return 1;
     }
 }
 
@@ -134,6 +126,6 @@ static bool TryParseOptions(string[] args, out CliOptions options)
 }
 
 internal sealed record CliOptions(
-    string Provider = MistralAuthProvider.ProviderId,
+    string Provider = "mistral",
     string? Method = null,
     bool OpenBrowser = true);

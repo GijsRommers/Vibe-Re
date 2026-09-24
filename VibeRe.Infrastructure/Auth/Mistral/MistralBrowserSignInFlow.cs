@@ -1,4 +1,4 @@
-using VibeRe.Core.Auth;
+using VibeRe.Application.Auth;
 
 namespace VibeRe.Infrastructure.Auth.Mistral;
 

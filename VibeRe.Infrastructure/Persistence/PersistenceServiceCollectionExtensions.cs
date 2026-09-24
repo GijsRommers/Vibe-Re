@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using VibeRe.Application.Conversations;
 using VibeRe.Domain.Conversations;
 using VibeRe.Infrastructure.Persistence.Repositories;
 

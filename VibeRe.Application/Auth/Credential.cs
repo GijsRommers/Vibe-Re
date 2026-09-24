@@ -1,4 +1,4 @@
-namespace VibeRe.Core.Auth;
+namespace VibeRe.Application.Auth;
 
 /// <summary>A secret (typically an API key) that authenticates against a model provider.</summary>
 public sealed record Credential(string ProviderId, string Secret)

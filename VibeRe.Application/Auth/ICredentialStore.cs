@@ -1,4 +1,4 @@
-namespace VibeRe.Core.Auth;
+namespace VibeRe.Application.Auth;
 
 /// <summary>Persists credentials between runs without exposing how they are stored.</summary>
 public interface ICredentialStore

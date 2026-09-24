@@ -1,4 +1,4 @@
-using VibeRe.Core.Auth;
+using VibeRe.Application.Auth;
 using VibeRe.Infrastructure.Credentials;
 
 namespace VibeRe.Infrastructure.Tests.Credentials;

@@ -2,7 +2,7 @@ using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace VibeRe.Core.Auth;
+namespace VibeRe.Application.Auth;
 
 /// <summary>An RFC 7636 PKCE verifier and its S256 challenge.</summary>
 public sealed class Pkce

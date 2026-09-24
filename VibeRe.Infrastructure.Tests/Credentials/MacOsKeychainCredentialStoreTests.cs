@@ -1,21 +1,10 @@
-using VibeRe.Core.Auth;
+using VibeRe.Application.Auth;
 using VibeRe.Infrastructure.Credentials;
 
 namespace VibeRe.Infrastructure.Tests.Credentials;
 
 public class MacOsKeychainCredentialStoreTests
 {
-    [Fact]
-    public void Factory_selects_macOS_keychain()
-    {
-        if (!OperatingSystem.IsMacOS())
-        {
-            return;
-        }
-
-        Assert.IsType<MacOsKeychainCredentialStore>(CredentialStoreFactory.CreateDefault());
-    }
-
     [Fact]
     public async Task Keychain_round_trips_and_deletes_a_credential()
     {

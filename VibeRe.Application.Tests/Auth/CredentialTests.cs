@@ -1,6 +1,6 @@
-using VibeRe.Core.Auth;
+using VibeRe.Application.Auth;
 
-namespace VibeRe.Core.Tests.Auth;
+namespace VibeRe.Application.Tests.Auth;
 
 public class CredentialTests
 {

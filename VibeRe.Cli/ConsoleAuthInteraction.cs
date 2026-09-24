@@ -1,17 +1,17 @@
 using System.Diagnostics;
 using System.Text;
-using VibeRe.Core.Auth;
+using VibeRe.Client;
 
 namespace VibeRe.Cli;
 
-internal sealed class ConsoleAuthInteraction(bool openBrowser) : IAuthInteraction
+internal sealed class ConsoleAuthInteraction(bool openBrowser) : ISignInInteraction
 {
-    public void ReportStatus(AuthStatus status)
+    public void ReportStage(SignInStage stage)
     {
-        var message = status switch
+        var message = stage switch
         {
-            AuthStatus.WaitingForUser => "Waiting for you to finish signing in... (Ctrl+C to cancel)",
-            AuthStatus.Exchanging => "Finishing sign-in...",
+            SignInStage.WaitingForUser => "Waiting for you to finish signing in... (Ctrl+C to cancel)",
+            SignInStage.Exchanging => "Finishing sign-in...",
             _ => null,
         };
         if (message is not null)

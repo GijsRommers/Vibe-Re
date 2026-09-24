@@ -1,4 +1,4 @@
-namespace VibeRe.Core.Auth;
+namespace VibeRe.Application.Auth;
 
 /// <summary>Signs users in and out of providers and resolves the credential to use for each.</summary>
 public sealed class AuthService

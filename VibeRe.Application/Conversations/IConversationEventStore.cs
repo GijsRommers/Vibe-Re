@@ -1,4 +1,6 @@
-namespace VibeRe.Domain.Conversations;
+using VibeRe.Domain.Conversations;
+
+namespace VibeRe.Application.Conversations;
 
 public interface IConversationEventStore
 {

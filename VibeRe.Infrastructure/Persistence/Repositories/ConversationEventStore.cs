@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using VibeRe.Application.Conversations;
 using VibeRe.Domain.Conversations;
 
 namespace VibeRe.Infrastructure.Persistence.Repositories;

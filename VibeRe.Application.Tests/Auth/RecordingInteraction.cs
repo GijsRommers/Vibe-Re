@@ -1,6 +1,6 @@
-using VibeRe.Core.Auth;
+using VibeRe.Application.Auth;
 
-namespace VibeRe.Core.Tests.Auth;
+namespace VibeRe.Application.Tests.Auth;
 
 internal sealed class RecordingInteraction(string? secret = null) : IAuthInteraction
 {

@@ -1,4 +1,4 @@
-namespace VibeRe.Core.Auth;
+namespace VibeRe.Application.Auth;
 
 public enum AuthErrorCode
 {

@@ -1,4 +1,4 @@
-namespace VibeRe.Core.Auth;
+namespace VibeRe.Application.Auth;
 
 /// <summary>Provider-agnostic flow where the user pastes an API key they created themselves.</summary>
 public sealed class ApiKeyAuthFlow(string providerDisplayName, Uri? createKeyUrl = null) : IAuthFlow

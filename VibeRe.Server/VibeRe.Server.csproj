@@ -1,24 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-    <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
-        <Nullable>enable</Nullable>
-        <ImplicitUsings>enable</ImplicitUsings>
-    </PropertyGroup>
-
     <ItemGroup>
-        <Protobuf Include="Protos\greet.proto" GrpcServices="Server" />
+        <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj" />
+        <ProjectReference Include="..\VibeRe.Infrastructure\VibeRe.Infrastructure.csproj" />
+        <ProjectReference Include="..\VibeRe.Protocol\VibeRe.Protocol.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Grpc.AspNetCore" Version="2.64.0" />
-        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj" />
-      <ProjectReference Include="..\VibeRe.Infrastructure\VibeRe.Infrastructure.csproj" />
-      <ProjectReference Include="..\VibeRe.Protocol\VibeRe.Protocol.csproj" />
+        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.84.0" />
     </ItemGroup>
 
 </Project>

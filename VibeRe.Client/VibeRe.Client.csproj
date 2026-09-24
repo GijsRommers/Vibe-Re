@@ -1,17 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
-    <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
+<Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-      <PackageReference Include="Grpc.Net.Client" Version="2.84.0" />
+        <ProjectReference Include="..\VibeRe.Protocol\VibeRe.Protocol.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\VibeRe.Protocol\VibeRe.Protocol.csproj" />
+        <PackageReference Include="Grpc.Net.Client" Version="2.84.0" />
     </ItemGroup>
 
 </Project>

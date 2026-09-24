@@ -1,5 +1,5 @@
 using System.Text.Json;
-using VibeRe.Core.Auth;
+using VibeRe.Application.Auth;
 
 namespace VibeRe.Infrastructure.Credentials;
 

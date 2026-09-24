@@ -1,4 +1,4 @@
-namespace VibeRe.Core.Auth;
+namespace VibeRe.Application.Auth;
 
 /// <summary>A model vendor that VibeRe can authenticate against.</summary>
 public interface IAuthProvider

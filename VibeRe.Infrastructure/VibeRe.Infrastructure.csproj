@@ -1,35 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-      <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="Auth\Mistral\" />
-    </ItemGroup>
-
-    <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\VibeRe.Core\VibeRe.Core.csproj"/>
+        <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj" />
         <ProjectReference Include="..\VibeRe.Domain\VibeRe.Domain.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-        <InternalsVisibleTo Include="VibeRe.Infrastructure.Tests"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
-      <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
-        <PrivateAssets>all</PrivateAssets>
-        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      </PackageReference>
-      <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+        <InternalsVisibleTo Include="VibeRe.Infrastructure.Tests" />
     </ItemGroup>
 
 </Project>

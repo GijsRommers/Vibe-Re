@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using VibeRe.Core.Auth;
+using VibeRe.Application.Auth;
 
 namespace VibeRe.Infrastructure.Auth.Mistral;
 
