@@ -1,6 +1,8 @@
-﻿namespace VibeRe.Domain.Chat;
+﻿using VibeRe.Domain.Common;
 
-public class SessionEvent
+namespace VibeRe.Domain.Chat;
+
+public class SessionEvent: TimeStampedEntity
 {
     public Guid Id { get; set; }
 

@@ -1,6 +1,8 @@
-﻿namespace VibeRe.Domain.Mcp;
+﻿using VibeRe.Domain.Common;
 
-public class McpConnection
+namespace VibeRe.Domain.Mcp;
+
+public class McpConnection: TimeStampedEntity
 {
     public Guid Id { get; set; }
 
