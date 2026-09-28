@@ -5,13 +5,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj" />
-        <ProjectReference Include="..\VibeRe.Infrastructure\VibeRe.Infrastructure.csproj" />
-        <ProjectReference Include="..\VibeRe.Protocol\VibeRe.Protocol.csproj" />
+        <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj"/>
+        <ProjectReference Include="..\VibeRe.Infrastructure\VibeRe.Infrastructure.csproj"/>
+        <ProjectReference Include="..\VibeRe.Protocol\VibeRe.Protocol.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.84.0" />
+        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.84.0"/>
     </ItemGroup>
 
 </Project>

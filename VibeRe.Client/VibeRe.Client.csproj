@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-        <ProjectReference Include="..\VibeRe.Protocol\VibeRe.Protocol.csproj" />
+        <ProjectReference Include="..\VibeRe.Protocol\VibeRe.Protocol.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Grpc.Net.Client" Version="2.84.0" />
+        <PackageReference Include="Grpc.Net.Client" Version="2.84.0"/>
     </ItemGroup>
 
 </Project>

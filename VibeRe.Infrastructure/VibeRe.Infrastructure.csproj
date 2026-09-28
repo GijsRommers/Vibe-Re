@@ -1,25 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-        <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj" />
-        <ProjectReference Include="..\VibeRe.Domain\VibeRe.Domain.csproj" />
+        <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj"/>
+        <ProjectReference Include="..\VibeRe.Domain\VibeRe.Domain.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12"/>
     </ItemGroup>
 
     <ItemGroup>
-        <InternalsVisibleTo Include="VibeRe.Infrastructure.Tests" />
+        <InternalsVisibleTo Include="VibeRe.Infrastructure.Tests"/>
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="Auth\" />
+        <Folder Include="Auth\"/>
     </ItemGroup>
 
 </Project>
