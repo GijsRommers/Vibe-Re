@@ -1,49 +1,14 @@
-using Microsoft.AspNetCore.Server.Kestrel.Core;
-using VibeRe.Application.Auth;
-using VibeRe.Infrastructure;
-using VibeRe.Infrastructure.Auth.Mistral;
-using VibeRe.Infrastructure.Credentials;
-using VibeRe.Infrastructure.Persistence;
-using VibeRe.Protocol;
-using VibeRe.Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Localhost only, cleartext HTTP/2 for gRPC. ASPNETCORE_URLS or --urls override the address.
-if (string.IsNullOrEmpty(builder.Configuration[WebHostDefaults.ServerUrlsKey]))
-{
-    builder.WebHost.UseUrls($"http://localhost:{ServerDefaults.Port}");
-}
-
-builder.WebHost.ConfigureKestrel(kestrel =>
-    kestrel.ConfigureEndpointDefaults(endpoint => endpoint.Protocols = HttpProtocols.Http2));
-
-// Installed as a single file without appsettings.json, so keep per-request logs out of server.log here.
-builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
-
-builder.Services.AddGrpc(options => options.Interceptors.Add<AuthExceptionInterceptor>());
-
-// Auth: macOS Keychain on macOS, an owner-only file elsewhere.
-builder.Services.AddSingleton<ICredentialStore>(_ => OperatingSystem.IsMacOS()
-    ? new MacOsKeychainCredentialStore()
-    : new FileCredentialStore(Path.Combine(VibeRePaths.Home, "credentials.json")));
-builder.Services.AddSingleton<IAuthProvider>(_ =>
-{
-    var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-    http.DefaultRequestHeaders.UserAgent.ParseAdd("VibeRe/0.1");
-    return new MistralAuthProvider(http);
-});
-builder.Services.AddSingleton(services => new AuthService(
-    services.GetServices<IAuthProvider>(),
-    services.GetRequiredService<ICredentialStore>()));
-
-Directory.CreateDirectory(VibeRePaths.Home);
-builder.Services.AddVibeRePersistence($"Data Source={VibeRePaths.Database}");
+// Add services to the container.
+builder.Services.AddGrpc();
 
 var app = builder.Build();
 
-await app.Services.MigrateVibeReDatabaseAsync();
-
-app.MapGrpcService<AuthGrpcService>();
+// Configure the HTTP request pipeline.
+app.MapGet("/",
+    () =>
+        "Communication with gRPC endpoints must be made through a gRPC client. To learn how to create a client, visit: https://go.microsoft.com/fwlink/?linkid=2086909");
 
 app.Run();
