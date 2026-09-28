@@ -4,4 +4,8 @@
         <ProjectReference Include="..\VibeRe.Domain\VibeRe.Domain.csproj"/>
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Model\" />
+    </ItemGroup>
+
 </Project>
