@@ -6,7 +6,6 @@
 
     <ItemGroup>
         <ProjectReference Include="..\VibeRe.Infrastructure\VibeRe.Infrastructure.csproj" />
-        <ProjectReference Include="..\VibeRe.Infrastructure.Mcp\VibeRe.Infrastructure.Mcp.csproj" />
     </ItemGroup>
 
     <ItemGroup>
