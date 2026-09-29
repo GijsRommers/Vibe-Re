@@ -12,7 +12,7 @@ public sealed class LatchkeySecretStore(ILatchkey store): ISecretStore
 
     public async Task<string?> GetAsync(string key, CancellationToken cancellationToken)
     {
-        await store.GetAsync(key, cancellationToken);
+        return await store.GetAsync(key, cancellationToken);
     }
 
     public async Task SetAsync(string key, string value, CancellationToken cancellationToken)
