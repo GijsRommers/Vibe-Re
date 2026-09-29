@@ -20,8 +20,4 @@
         <InternalsVisibleTo Include="VibeRe.Infrastructure.Tests"/>
     </ItemGroup>
 
-    <ItemGroup>
-        <Folder Include="Auth\"/>
-    </ItemGroup>
-
 </Project>

@@ -1,4 +1,5 @@
 ﻿using VibeRe.Domain.Common;
+using VibeRe.Domain.Credentials;
 
 namespace VibeRe.Domain.Mcp;
 
@@ -8,5 +9,6 @@ public class McpConnection : TimeStampedEntity
 
     public McpTransportType TransportType { get; set; }
 
-    public McpAuthenticationType AuthenticationType { get; set; }
+    public Credential? Credential { get; set; }
+
 }
