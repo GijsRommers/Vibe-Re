@@ -1,4 +1,4 @@
-﻿namespace VibeRe.Application.Auth;
+﻿namespace VibeRe.Application.Secrets;
 
 public interface ISecretStore
 {

@@ -20,7 +20,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="Auth\Secrets\" />
+        <Folder Include="Auth\Secrets\"/>
     </ItemGroup>
 
 </Project>

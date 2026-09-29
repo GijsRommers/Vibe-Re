@@ -1,7 +1,6 @@
-using Latchkey;
 using Latchkey.Extensions.DependencyInjection;
-using VibeRe.Application.Auth;
-using VibeRe.Infrastructure.Auth.Secrets;
+using VibeRe.Application.Secrets;
+using VibeRe.Infrastructure.Secrets;
 
 namespace VibeRe.Server;
 
@@ -11,8 +10,7 @@ internal static class DependencyInjection
     {
         services.AddLatchkey("dev.vibe-re");
         services.AddSingleton<ISecretStore, LatchkeySecretStore>();
-        
+
         return services;
     }
-    
 }

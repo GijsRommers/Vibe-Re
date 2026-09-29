@@ -1,9 +1,9 @@
 using Latchkey;
-using VibeRe.Application.Auth;
+using VibeRe.Application.Secrets;
 
-namespace VibeRe.Infrastructure.Auth.Secrets;
+namespace VibeRe.Infrastructure.Secrets;
 
-public sealed class LatchkeySecretStore(ILatchkey store): ISecretStore
+public sealed class LatchkeySecretStore(ILatchkey store) : ISecretStore
 {
     public async Task DeleteAsync(string key, CancellationToken cancellationToken)
     {
