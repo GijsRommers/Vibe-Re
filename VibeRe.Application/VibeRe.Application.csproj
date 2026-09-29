@@ -6,7 +6,7 @@
 
     <ItemGroup>
         <Folder Include="Model\"/>
-        <Folder Include="Providers\" />
+        <Folder Include="Providers\"/>
     </ItemGroup>
 
 </Project>

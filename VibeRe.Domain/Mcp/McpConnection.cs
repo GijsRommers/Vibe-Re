@@ -10,5 +10,4 @@ public class McpConnection : TimeStampedEntity
     public McpTransportType TransportType { get; set; }
 
     public Credential? Credential { get; set; }
-
 }

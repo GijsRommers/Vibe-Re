@@ -4,8 +4,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddGrpc();
+// DI
 builder.Services.AddVibeReServices();
 var app = builder.Build();
+
+// Migrating SQUEELITE
+await app.ApplyMigrationsAsync();
+
 
 // Configure the HTTP request pipeline.
 app.MapGet("/",
