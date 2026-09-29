@@ -66,4 +66,8 @@
         <MauiPlatformSpecificFolder Remove="Platforms\Windows\"/>
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Properties\" />
+    </ItemGroup>
+
 </Project>
