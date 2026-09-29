@@ -1,8 +1,10 @@
+using VibeRe.Server;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddGrpc();
-
+builder.Services.AddVibeReServices();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

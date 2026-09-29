@@ -62,8 +62,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <MauiPlatformSpecificFolder Remove="Platforms\MacCatalyst\" />
-      <MauiPlatformSpecificFolder Remove="Platforms\Windows\" />
+        <MauiPlatformSpecificFolder Remove="Platforms\MacCatalyst\"/>
+        <MauiPlatformSpecificFolder Remove="Platforms\Windows\"/>
     </ItemGroup>
 
 </Project>

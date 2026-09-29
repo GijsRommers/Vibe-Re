@@ -2,7 +2,7 @@
 
 namespace VibeRe.Domain.Chat;
 
-public class Session: TimeStampedEntity
+public class Session : TimeStampedEntity
 {
     public Guid Id { get; set; }
 

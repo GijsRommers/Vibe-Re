@@ -12,8 +12,9 @@ public sealed class TimestampedEntityInterceptor(TimeProvider timeProvider) : Sa
         return base.SavingChanges(eventData, result);
     }
 
-    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result,
-        CancellationToken cancellationToken = new CancellationToken())
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = new())
     {
         UpdateTimestamps(eventData.Context);
         return base.SavingChangesAsync(eventData, result, cancellationToken);
@@ -28,7 +29,6 @@ public sealed class TimestampedEntityInterceptor(TimeProvider timeProvider) : Sa
 
         foreach (var entry in context.ChangeTracker
                      .Entries<ITimestampedEntity>())
-        {
             switch (entry.State)
             {
                 case EntityState.Added:
@@ -41,6 +41,5 @@ public sealed class TimestampedEntityInterceptor(TimeProvider timeProvider) : Sa
                     entry.Property(x => x.CreatedAt).IsModified = false;
                     break;
             }
-        }
     }
 }

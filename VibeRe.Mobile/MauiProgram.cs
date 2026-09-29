@@ -1,6 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
-
-namespace VibeRe.Mobile;
+﻿namespace VibeRe.Mobile;
 
 public static class MauiProgram
 {

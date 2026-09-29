@@ -1,8 +1,6 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿namespace VibeRe.Mobile;
 
-namespace VibeRe.Mobile;
-
-public partial class App : Application
+public class App : Application
 {
     public App()
     {

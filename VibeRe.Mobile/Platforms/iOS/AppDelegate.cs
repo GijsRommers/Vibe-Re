@@ -1,9 +1,10 @@
-﻿using Foundation;
-
-namespace VibeRe.Mobile;
+﻿namespace VibeRe.Mobile;
 
 [Register("AppDelegate")]
 public class AppDelegate : MauiUIApplicationDelegate
 {
-    protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
+    protected override MauiApp CreateMauiApp()
+    {
+        return MauiProgram.CreateMauiApp();
+    }
 }

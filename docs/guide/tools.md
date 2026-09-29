@@ -5,16 +5,16 @@ connecting MCP servers (see mcp.md). Both kinds work the same way and follow the
 
 ## Built-in tools
 
-| Tool | What it does |
-|---|---|
-| `read_file` | Reads a text file with line numbers. `offset` and `limit` page through large files. |
-| `create_file` | Creates a file and any missing parent directories. Existing files are only replaced with `overwrite: true`. |
-| `edit_file` | Replaces an exact piece of text in a file. The text must occur once unless `replace_all` is true. |
-| `list_directory` | Lists one directory. Directories end with `/`. |
-| `grep` | Searches file contents with ripgrep. Can list matching files, show matching lines with context, or count matches. |
-| `find_files` | Finds files by glob, such as `*.cs` or `src/**/*.ts`. |
-| `search_docs` | Searches this documentation. |
-| `read_doc` | Reads one documentation page, or lists all pages. |
+| Tool             | What it does                                                                                                      |
+|------------------|-------------------------------------------------------------------------------------------------------------------|
+| `read_file`      | Reads a text file with line numbers. `offset` and `limit` page through large files.                               |
+| `create_file`    | Creates a file and any missing parent directories. Existing files are only replaced with `overwrite: true`.       |
+| `edit_file`      | Replaces an exact piece of text in a file. The text must occur once unless `replace_all` is true.                 |
+| `list_directory` | Lists one directory. Directories end with `/`.                                                                    |
+| `grep`           | Searches file contents with ripgrep. Can list matching files, show matching lines with context, or count matches. |
+| `find_files`     | Finds files by glob, such as `*.cs` or `src/**/*.ts`.                                                             |
+| `search_docs`    | Searches this documentation.                                                                                      |
+| `read_doc`       | Reads one documentation page, or lists all pages.                                                                 |
 
 File tools only work inside the conversation's working directory. Paths outside it are refused.
 
