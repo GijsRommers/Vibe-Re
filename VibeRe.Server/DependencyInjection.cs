@@ -5,24 +5,39 @@ using VibeRe.Application.Secrets;
 using VibeRe.Infrastructure.Persistence;
 using VibeRe.Infrastructure.Persistence.Interceptors;
 using VibeRe.Infrastructure.Secrets;
+using VibeRe.Application.Providers.Auth;
+using VibeRe.Application.Providers.Profiles;
+using VibeRe.Infrastructure.Providers.Mistral.Auth;
 
 namespace VibeRe.Server;
 
 internal static class DependencyInjection
 {
-    public static IServiceCollection AddVibeReServices(this IServiceCollection services)
+    public static IServiceCollection AddVibeReServices(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<TimestampedEntityInterceptor>();
 
-        services.AddDbContext<VibeReDbContext>((sp, options) =>
+        services.AddDbContextFactory<VibeReDbContext>((sp, options) =>
         {
-            options.UseSqlite(DatabaseConnectionString());
+            options.UseSqlite(configuration.GetConnectionString("VibeRe") ?? DatabaseConnectionString());
             options.AddInterceptors(sp.GetRequiredService<TimestampedEntityInterceptor>());
         });
 
         services.AddLatchkey("dev.vibe-re");
         services.AddSingleton<ISecretStore, LatchkeySecretStore>();
+        services.AddSingleton<IProfileRepository, ProfileRepository>();
+        services.AddSingleton<ICredentialResolver, CredentialResolver>();
+        services.AddHttpClient<MistralAuthFlow>(client => client.Timeout = TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddHttpClient<MistralBrowserAuthFlow>(client => client.Timeout = TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddSingleton<IAuthFlow>(sp => sp.GetRequiredService<MistralAuthFlow>());
+        services.AddSingleton<IBrowserAuthFlow>(sp => sp.GetRequiredService<MistralBrowserAuthFlow>());
+        services.AddSingleton<IAuthService, AuthService>();
+        services.AddSingleton<IBrowserAuthService, BrowserAuthService>();
 
         return services;
     }

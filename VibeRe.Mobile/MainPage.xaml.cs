@@ -1,23 +1,32 @@
-﻿namespace VibeRe.Mobile;
+using VibeRe.Client;
+using VibeRe.Client.Configuration;
 
-public class MainPage : ContentPage
+namespace VibeRe.Mobile;
+
+public partial class MainPage : ContentPage
 {
-    private int count;
+    private readonly ConnectionSettingsViewModel _model;
 
     public MainPage()
     {
         InitializeComponent();
+        var connections = new ServerConnectionManager(
+            new ClientConnectionDatabase(Path.Combine(FileSystem.AppDataDirectory, "client.db")),
+            new MobileServerTokenStore());
+        _model = new(connections, async uri => { await Launcher.Default.OpenAsync(uri); });
+        BindingContext = _model;
     }
 
-    private void OnCounterClicked(object? sender, EventArgs e)
+    protected override async void OnAppearing()
     {
-        count++;
+        base.OnAppearing();
+        await _model.InitializeAsync();
+        _model.StartMonitoring();
+    }
 
-        if (count == 1)
-            CounterBtn.Text = $"Clicked {count} time";
-        else
-            CounterBtn.Text = $"Clicked {count} times";
-
-        SemanticScreenReader.Announce(CounterBtn.Text);
+    protected override void OnDisappearing()
+    {
+        _model.StopMonitoring();
+        base.OnDisappearing();
     }
 }

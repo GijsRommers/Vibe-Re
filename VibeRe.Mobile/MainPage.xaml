@@ -1,37 +1,36 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-
+<?xml version="1.0" encoding="utf-8"?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="VibeRe.Mobile.MainPage">
-
+             xmlns:client="clr-namespace:VibeRe.Client;assembly=VibeRe.Client"
+             x:Class="VibeRe.Mobile.MainPage" x:DataType="client:ConnectionSettingsViewModel" Title="Servers">
     <ScrollView>
-        <VerticalStackLayout
-            Padding="30,0"
-            Spacing="25">
-            <Image
-                Source="dotnet_bot.png"
-                HeightRequest="185"
-                Aspect="AspectFit"
-                SemanticProperties.Description="dot net bot in a submarine number ten" />
-
-            <Label
-                Text="Hello, World!"
-                Style="{StaticResource Headline}"
-                SemanticProperties.HeadingLevel="Level1" />
-
-            <Label
-                Text="Welcome to &#10;.NET Multi-platform App UI"
-                Style="{StaticResource SubHeadline}"
-                SemanticProperties.HeadingLevel="Level2"
-                SemanticProperties.Description="Welcome to dot net Multi platform App U I" />
-
-            <Button
-                x:Name="CounterBtn"
-                Text="Click me"
-                SemanticProperties.Hint="Counts the number of times you click"
-                Clicked="OnCounterClicked"
-                HorizontalOptions="Fill" />
+        <VerticalStackLayout Padding="24" Spacing="14">
+            <Label Text="Your servers" FontSize="28" FontAttributes="Bold" />
+            <Label Text="Mistral login is saved on the selected server." />
+            <Picker Title="Select a server" ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
+                    IsEnabled="{Binding CanEdit}" />
+            <Entry Text="{Binding ServerAddress}" Placeholder="Server URL" IsEnabled="{Binding CanEdit}" />
+            <Button Text="Save address" Command="{Binding SaveAddressCommand}" />
+            <Entry Text="{Binding ServerToken}" IsPassword="True" Placeholder="Server access token"
+                   IsEnabled="{Binding CanEdit}" />
+            <Button Text="Save token" Command="{Binding SaveTokenCommand}" />
+            <Label Text="Saving an empty token clears it. Changing the address clears its saved token." FontSize="12" />
+            <Label Text="Mistral" FontSize="22" FontAttributes="Bold" />
+            <Label Text="{Binding Status}" />
+            <Label Text="This server needs a Mistral login. Choose browser login or enter an API key."
+                   IsVisible="{Binding NeedsLogin}" FontAttributes="Bold" />
+            <Button Text="Log in with browser" Command="{Binding LoginBrowserCommand}" />
+            <Entry Text="{Binding ApiKey}" IsPassword="True" Placeholder="Mistral API key" IsEnabled="{Binding CanEdit}" />
+            <Button Text="Log in with key" Command="{Binding LoginApiKeyCommand}" />
+            <Editor Text="{Binding BrowserUrl}" IsReadOnly="True" AutoSize="TextChanges" />
+            <Button Text="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" />
+            <Button Text="Refresh status" Command="{Binding RefreshCommand}" />
+            <Button Text="Log out" Command="{Binding LogoutCommand}" />
+            <Button Text="Remove server" Command="{Binding RemoveServerCommand}" />
+            <Label Text="Add a server" FontSize="22" FontAttributes="Bold" />
+            <Entry Text="{Binding NewServerName}" Placeholder="Name" IsEnabled="{Binding CanEdit}" />
+            <Entry Text="{Binding NewServerAddress}" Placeholder="https://vibe.example.com" IsEnabled="{Binding CanEdit}" />
+            <Button Text="Add server" Command="{Binding AddServerCommand}" />
         </VerticalStackLayout>
     </ScrollView>
-
 </ContentPage>

@@ -3,6 +3,6 @@ namespace VibeRe.Application.Providers.Auth;
 public interface IAuthFlow
 {
     string ProviderName { get; }
-    
-    Task<AuthStart>
+    Uri BaseUri { get; }
+    Task<ProviderAuthStatus> ValidateAsync(string apiKey, CancellationToken cancellationToken = default);
 }

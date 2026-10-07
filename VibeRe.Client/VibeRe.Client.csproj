@@ -6,6 +6,9 @@
 
     <ItemGroup>
         <PackageReference Include="Grpc.Net.Client" Version="2.84.0"/>
+        <PackageReference Include="Latchkey" Version="0.1.0"/>
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2"/>
+        <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12"/>
     </ItemGroup>
 
 </Project>

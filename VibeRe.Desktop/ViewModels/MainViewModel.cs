@@ -1,8 +1,14 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+using System.Diagnostics;
+using VibeRe.Client;
+using VibeRe.Client.Configuration;
 
 namespace VibeRe.Desktop.ViewModels;
 
-public partial class MainViewModel : ViewModelBase
+public sealed class MainViewModel() : ConnectionSettingsViewModel(ServerConnectionManager.CreateDesktop(), OpenBrowserAsync)
 {
-    [ObservableProperty] public partial string Greeting { get; set; } = "Welcome to Avalonia!";
+    private static Task OpenBrowserAsync(Uri uri)
+    {
+        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        return Task.CompletedTask;
+    }
 }
