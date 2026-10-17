@@ -1,4 +1,5 @@
 using VibeRe.Client;
+using Microsoft.Extensions.Logging;
 using VibeRe.Client.Configuration;
 
 namespace VibeRe.Mobile;

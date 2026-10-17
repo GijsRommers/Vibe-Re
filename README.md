@@ -80,6 +80,8 @@ On a physical phone, `localhost` refers to the phone. Add your server's reachabl
 
 ## Validation
 
+For CLI, desktop, and server development, open `vibe-re.desktop.slnf` in your IDE or run `dotnet build vibe-re.desktop.slnf`. It loads the existing solution without the mobile project, so mobile workloads are optional for this workflow.
+
 ```sh
 dotnet build VibeRe.Server
 dotnet build VibeRe.Cli
@@ -95,4 +97,27 @@ The tests use fake Mistral HTTP responses, isolated SQLite databases, and fake s
 
 Client services are registered through `AddVibeReClient`. Configuration storage, token storage, server connections, local process startup, readiness checks, and browser opening have explicit interfaces. The connection manager edits saved settings; the connector establishes sessions; CLI parsing, auth commands, and server commands live in separate classes. Provider credential persistence and rollback are separate from authentication policy. Changing a server address rotates its credential identifier, so concurrent clients cannot read a new destination's token using an old connection snapshot.
 
-Mobile builds and the full solution require the .NET MAUI workloads plus the Android/iOS platform SDKs. Install the workloads in your mobile development environment, then build `VibeRe.Mobile` for `net10.0-android` or `net10.0-ios`. The shared mobile/desktop connection logic is exercised by the client and server tests; native mobile packaging still needs platform validation.
+Mobile development requires the .NET 10 SDK and matching MAUI workload. Install it with `dotnet workload install maui`, then reload the solution in the IDE. `dotnet workload list` should list `maui`. A missing platform workload can also produce `NETSDK1135` during IDE project loading because the target platform version cannot be inferred; install the workload rather than lowering the app's minimum supported OS version.
+
+The mobile project targets Android on Windows/Linux and adds iOS on macOS. Build Android with `dotnet build VibeRe.Mobile -f net10.0-android`; the Android SDK and Java SDK must also be installed. Build iOS on a Mac with a compatible Xcode using `dotnet build VibeRe.Mobile -f net10.0-ios`. For a configured Mac build host from Windows, explicitly opt in with `-p:EnableIosTarget=true`. The shared mobile/desktop connection logic is exercised by client and server tests; native packaging requires its platform toolchain.
+
+## Configuration and settings
+
+No separate configuration project is needed. `VibeRe.Client` owns local configuration behind `IClientConfigurationStore`; `ClientConnectionDatabase` persists the typed `ClientConfiguration` in SQLite. CLI and desktop share this store, while mobile supplies its own app-data path through `AddVibeReClient`.
+
+Inject `IClientConfigurationStore` to read a snapshot:
+
+```csharp
+var configuration = await configurations.LoadAsync(cancellationToken);
+var selectedServer = configuration.Find();
+```
+
+Use `IServerConnectionManager` to edit connections, tokens, or startup preferences, and `IServerConnector` to connect. This preserves validation, destination-scoped credentials, and concurrent access between CLI and desktop. Configuration is created on first use and can be read while every server is offline.
+
+Follow [T3's settings ownership](https://github.com/pingdotgg/t3code/blob/main/docs/user/project-settings.md) when adding settings pages:
+
+- **Connections** edits the servers saved on this device. Additional device preferences, such as appearance, can extend the same client store.
+- **Providers** shows the selected server's login and provider configuration through gRPC. The server owns persistence, and offline servers retain their settings. Existing auth operations already follow this boundary; additional provider-settings contracts belong in `VibeRe.Protocol`.
+- Show whether a page edits **this device** or a **selected server**, and preserve that selection when navigating. An offline server must never silently fall back to another server.
+
+Keep API keys and access tokens in their existing secret stores. Client UI code does not open the server's SQLite database, and configuration replies must not return stored secrets. SQLite fits the existing shared CLI/desktop store; adding a second writable JSON file would introduce competing sources of configuration.

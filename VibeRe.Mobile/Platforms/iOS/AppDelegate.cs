@@ -1,5 +1,7 @@
 ﻿namespace VibeRe.Mobile;
 
+using Foundation;
+
 [Register("AppDelegate")]
 public class AppDelegate : MauiUIApplicationDelegate
 {

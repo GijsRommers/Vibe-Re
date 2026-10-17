@@ -1,0 +1,22 @@
+{
+  "solution": {
+    "path": "vibe-re.sln",
+    "projects": [
+      "VibeRe.Application\\VibeRe.Application.csproj",
+      "VibeRe.Application.Tests\\VibeRe.Application.Tests.csproj",
+      "VibeRe.Cli\\VibeRe.Cli.csproj",
+      "VibeRe.Cli.Tests\\VibeRe.Cli.Tests.csproj",
+      "VibeRe.Client\\VibeRe.Client.csproj",
+      "VibeRe.Client.Tests\\VibeRe.Client.Tests.csproj",
+      "VibeRe.Desktop\\VibeRe.Desktop.csproj",
+      "VibeRe.Domain\\VibeRe.Domain.csproj",
+      "VibeRe.Infrastructure\\VibeRe.Infrastructure.csproj",
+      "VibeRe.Infrastructure.Tests\\VibeRe.Infrastructure.Tests.csproj",
+      "VibeRe.Protocol\\VibeRe.Protocol.csproj",
+      "VibeRe.Server\\VibeRe.Server.csproj",
+      "VibeRe.Server.Tests\\VibeRe.Server.Tests.csproj",
+      "VibeRe.Tools\\VibeRe.Tools.csproj",
+      "VibeRe.Tools.Tests\\VibeRe.Tools.Tests.csproj"
+    ]
+  }
+}
