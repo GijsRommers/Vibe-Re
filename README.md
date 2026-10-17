@@ -114,10 +114,8 @@ var selectedServer = configuration.Find();
 
 Use `IServerConnectionManager` to edit connections, tokens, or startup preferences, and `IServerConnector` to connect. This preserves validation, destination-scoped credentials, and concurrent access between CLI and desktop. Configuration is created on first use and can be read while every server is offline.
 
-Follow [T3's settings ownership](https://github.com/pingdotgg/t3code/blob/main/docs/user/project-settings.md) when adding settings pages:
+VibeRe has one Mistral login screen, with a **Server** picker above it. Use **Manage servers** to add or edit a server, then choose it from the picker. The selection is remembered locally and shared by CLI and desktop. Switching servers refreshes that server's Mistral status; login and logout always act on the selected server. An offline server stays selected and never silently falls back to another server.
 
-- **Connections** edits the servers saved on this device. Additional device preferences, such as appearance, can extend the same client store.
-- **Providers** shows the selected server's login and provider configuration through gRPC. The server owns persistence, and offline servers retain their settings. Existing auth operations already follow this boundary; additional provider-settings contracts belong in `VibeRe.Protocol`.
-- Show whether a page edits **this device** or a **selected server**, and preserve that selection when navigating. An offline server must never silently fall back to another server.
+This follows [T3's settings ownership](https://github.com/pingdotgg/t3code/blob/main/docs/user/project-settings.md): the connection choice belongs to the device, and authentication belongs to the chosen server. Separate provider-management pages are unnecessary for the single-provider app.
 
 Keep API keys and access tokens in their existing secret stores. Client UI code does not open the server's SQLite database, and configuration replies must not return stored secrets. SQLite fits the existing shared CLI/desktop store; adding a second writable JSON file would introduce competing sources of configuration.

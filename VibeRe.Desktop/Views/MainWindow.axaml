@@ -10,15 +10,22 @@
                 <TextBlock Text="VibeRe" FontSize="32" FontWeight="SemiBold" HorizontalAlignment="Center" />
                 <TextBlock Text="Your workspace, connected." Foreground="#687285" HorizontalAlignment="Center" />
             </StackPanel>
-            <ComboBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
-                      IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch" />
+            <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Server" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="Manage servers" Command="{Binding ToggleServerSettingsCommand}"
+                            Background="Transparent" BorderThickness="0" Foreground="#687285" FontSize="12" />
+                </Grid>
+                <ComboBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
+                          IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch" PlaceholderText="Choose a server" />
+            </StackPanel>
             <Border Background="White" BorderBrush="#E2E6ED" BorderThickness="1" Padding="32" CornerRadius="16">
                 <StackPanel Spacing="20">
                     <StackPanel Spacing="8">
                         <TextBlock Text="{Binding LoginTitle}" FontSize="24" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding Status}" Foreground="#687285" TextWrapping="Wrap" />
                     </StackPanel>
-                    <TextBlock Text="Log in to Mistral to get started. Your login is saved on this server."
+                    <TextBlock Text="{Binding LoginDescription}"
                                IsVisible="{Binding NeedsLogin}" TextWrapping="Wrap" Foreground="#687285" />
                     <Button Content="Log in to Mistral" Command="{Binding LoginBrowserCommand}"
                             IsVisible="{Binding NeedsLogin}" HorizontalAlignment="Stretch"
@@ -39,8 +46,10 @@
                     <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" />
                 </StackPanel>
             </Border>
-            <Expander Header="Server settings" HorizontalAlignment="Stretch" IsExpanded="{Binding ShowServerSettings}">
-                <StackPanel Spacing="12" Margin="0,12">
+            <Border IsVisible="{Binding ShowServerSettings}" Background="White" BorderBrush="#E2E6ED"
+                    BorderThickness="1" Padding="20" CornerRadius="12">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Server settings" FontWeight="SemiBold" />
                     <Button Content="Refresh connection" Command="{Binding RefreshCommand}" />
                     <Button Content="Remove Mistral login" Command="{Binding LogoutCommand}" />
                     <CheckBox Content="Start this server locally when needed" IsChecked="{Binding StartLocalServer}"
@@ -65,7 +74,7 @@
                         <Button Grid.Column="2" Content="Add" Command="{Binding AddServerCommand}" />
                     </Grid>
                 </StackPanel>
-            </Expander>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </Window>

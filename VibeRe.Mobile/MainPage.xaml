@@ -7,13 +7,20 @@
         <VerticalStackLayout Padding="28,40" Spacing="20" MaximumWidthRequest="480" HorizontalOptions="Center">
             <Label Text="VibeRe" FontSize="32" FontAttributes="Bold" HorizontalOptions="Center" />
             <Label Text="Your workspace, connected." HorizontalOptions="Center" TextColor="#687285" />
-            <Picker Title="Select a server" ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
-                    IsEnabled="{Binding CanEdit}" />
+            <VerticalStackLayout Spacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label Text="Server" FontAttributes="Bold" VerticalOptions="Center" />
+                    <Button Grid.Column="1" Text="Manage servers" Command="{Binding ToggleServerSettingsCommand}"
+                            BackgroundColor="Transparent" TextColor="#687285" FontSize="12" />
+                </Grid>
+                <Picker Title="Choose a server" ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
+                        IsEnabled="{Binding CanEdit}" />
+            </VerticalStackLayout>
             <Border Padding="24" StrokeShape="RoundRectangle 16" Stroke="#E2E6ED">
                 <VerticalStackLayout Spacing="18">
                     <Label Text="{Binding LoginTitle}" FontSize="24" FontAttributes="Bold" />
                     <Label Text="{Binding Status}" />
-                    <Label Text="Log in to Mistral to get started. Your login is saved on this server."
+                    <Label Text="{Binding LoginDescription}"
                            IsVisible="{Binding NeedsLogin}" />
                     <Button Text="Log in to Mistral" Command="{Binding LoginBrowserCommand}" IsVisible="{Binding NeedsLogin}"
                             BackgroundColor="#315CF5" TextColor="White" CornerRadius="8" Padding="20,14" />
@@ -29,7 +36,6 @@
                     <Button Text="Log out" Command="{Binding LogoutCommand}" IsVisible="{Binding IsSignedIn}" />
                 </VerticalStackLayout>
             </Border>
-            <Button Text="Server settings" Command="{Binding ToggleServerSettingsCommand}" BackgroundColor="Transparent" />
             <VerticalStackLayout IsVisible="{Binding ShowServerSettings}" Spacing="14">
                 <Button Text="Refresh connection" Command="{Binding RefreshCommand}" />
                 <Button Text="Remove Mistral login" Command="{Binding LogoutCommand}" />

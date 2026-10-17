@@ -23,7 +23,7 @@ public partial class ConnectionSettingsViewModel(
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RemoveServerCommand), nameof(SaveAddressCommand), nameof(SaveTokenCommand),
         nameof(RefreshCommand), nameof(LoginApiKeyCommand), nameof(LoginBrowserCommand), nameof(LogoutCommand))]
-    [NotifyPropertyChangedFor(nameof(CanStartLocally))]
+    [NotifyPropertyChangedFor(nameof(CanStartLocally), nameof(LoginDescription))]
     private ServerConnection? _selectedServer;
 
     [ObservableProperty] private string _newServerName = "";
@@ -51,6 +51,9 @@ public partial class ConnectionSettingsViewModel(
 
     public bool CanEdit => !IsBusy;
     public string LoginTitle => IsSignedIn ? "You're connected" : "Connect to Mistral";
+    public string LoginDescription => SelectedServer is { } server
+        ? $"Log in to Mistral on {server.Name}. Your login stays on that server."
+        : "Choose a server to log in to Mistral.";
     public bool HasBrowserUrl => BrowserUrl.Length != 0;
     public bool CanStartLocally => SelectedServer is { } server && new Uri(server.Address).IsLoopback &&
         !OperatingSystem.IsAndroid() && !OperatingSystem.IsIOS();
