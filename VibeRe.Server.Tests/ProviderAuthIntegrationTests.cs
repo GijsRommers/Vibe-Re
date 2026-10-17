@@ -1,37 +1,37 @@
-using System.Text;
-using Grpc.Core;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using VibeRe.Server.Application.Providers.Auth;
-using VibeRe.Server.Application.Secrets;
+using System.Net;
+using System.Text.Json;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR.Client;
 using VibeRe.Client.Application;
-using VibeRe.Client.Infrastructure;
+using VibeRe.Contracts;
+using AuthState = VibeRe.Client.Application.AuthState;
+using BrowserLoginState = VibeRe.Client.Application.BrowserLoginState;
+using WireBrowserState = VibeRe.Contracts.BrowserLoginState;
 
 namespace VibeRe.Server.Tests;
 
 public class ProviderAuthIntegrationTests
 {
     [Fact]
-    public async Task ReadinessIdentifiesRuntimeWithoutRequiringServerToken()
+    public async Task ReadinessIdentifiesSignalRRuntimeWithoutRequiringServerToken()
     {
-        using var server = new Factory();
+        using var server = new SignalRTestServer();
         using var http = server.CreateClient();
-        var response = await http.GetAsync("/.well-known/vibe-re/server");
+        var response = await http.GetAsync(ServerProtocol.ReadinessPath);
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("\"application\":\"vibe-re\"", body);
-        Assert.Contains("\"protocolVersion\":1", body);
-        Assert.DoesNotContain("token", body);
+        using var document = JsonDocument.Parse(body);
+        Assert.Equal("vibe-re", document.RootElement.GetProperty("application").GetString());
+        Assert.Equal(ServerProtocol.Version, document.RootElement.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(ServerProtocol.Transport, document.RootElement.GetProperty("transport").GetString());
+        Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public async Task ClientsSeeSameServerLoginAndOtherServersRemainSignedOut()
     {
-        using var first = new Factory();
-        using var second = new Factory();
+        using var first = new SignalRTestServer();
+        using var second = new SignalRTestServer();
         using var cli = first.Connect();
         using var desktop = first.Connect();
         using var otherServer = second.Connect();
@@ -44,56 +44,38 @@ public class ProviderAuthIntegrationTests
         await desktop.LogoutAsync();
         Assert.Equal(AuthState.SignedOut, (await cli.GetStatusAsync()).State);
         Assert.Empty(first.Secrets.Values);
+        first.AssertResponsesExclude("valid-key", "bad-key", "server-token");
     }
 
     [Fact]
-    public async Task BrowserAndApiKeyLoginBothPersistOnServerWithoutReturningSecrets()
+    public async Task BrowserAndApiKeyLoginPersistOnServerWithoutReturningSecrets()
     {
-        using var server = new Factory();
+        using var server = new SignalRTestServer();
         using var client = server.Connect();
+        string? opened = null;
         var completion = await client.LoginWithBrowserAsync(attempt =>
         {
-            Assert.DoesNotContain("verifier", attempt.ToString());
+            opened = attempt.SignInUrl;
+            Assert.DoesNotContain("verifier", attempt.ToString(), StringComparison.OrdinalIgnoreCase);
             return Task.CompletedTask;
         });
+        Assert.Equal("https://console.mistral.ai/login", opened);
         Assert.Equal(BrowserLoginState.Completed, completion.State);
         Assert.Equal(AuthState.Authenticated, completion.AuthStatus!.State);
         Assert.DoesNotContain("browser-key", completion.ToString());
         Assert.NotNull(server.Browser.LastVerifier);
-        Assert.All(server.Responses, response =>
-        {
-            Assert.DoesNotContain("browser-key", response);
-            Assert.DoesNotContain(server.Browser.LastVerifier, response);
-        });
         Assert.Contains("browser-key", server.Secrets.Values.Values);
         await client.LoginAsync("new-api-key");
         Assert.Contains("new-api-key", server.Secrets.Values.Values);
         Assert.DoesNotContain("browser-key", server.Secrets.Values.Values);
         Assert.Equal(AuthState.Authenticated, (await client.GetStatusAsync()).State);
-        Assert.All(server.Responses, response => Assert.DoesNotContain("new-api-key", response));
-    }
-
-    [Fact]
-    public async Task SharedBrowserLoginOpensClientUrlAndPersistsCredentialOnServer()
-    {
-        using var server = new Factory();
-        using var client = server.Connect();
-        string? opened = null;
-        var result = await client.LoginWithBrowserAsync(attempt =>
-        {
-            opened = attempt.SignInUrl;
-            return Task.CompletedTask;
-        });
-        Assert.Equal("https://console.mistral.ai/login", opened);
-        Assert.Equal(BrowserLoginState.Completed, result.State);
-        Assert.Equal(AuthState.Authenticated, result.AuthStatus!.State);
-        Assert.Contains("browser-key", server.Secrets.Values.Values);
+        server.AssertResponsesExclude("browser-key", "new-api-key", "exchange-secret", "server-token", server.Browser.LastVerifier);
     }
 
     [Fact]
     public async Task LogoutCancelsPendingBrowserLogin()
     {
-        using var server = new Factory();
+        using var server = new SignalRTestServer();
         using var client = server.Connect();
         var result = await client.LoginWithBrowserAsync(async _ => { await client.LogoutAsync(); });
         Assert.Equal(BrowserLoginState.Canceled, result.State);
@@ -106,24 +88,26 @@ public class ProviderAuthIntegrationTests
     [InlineData("wrong-token")]
     public async Task MissingOrWrongServerTokenCannotReadOrChangeProviderCredentials(string? token)
     {
-        using var server = new Factory();
+        using var server = new SignalRTestServer();
         using var client = server.Connect(token);
         var error = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginAsync("valid-key"));
-        Assert.Equal(StatusCode.Unauthenticated, Assert.IsType<RpcException>(error.InnerException).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, Assert.IsType<HttpRequestException>(error.InnerException).StatusCode);
         Assert.Empty(server.Secrets.Values);
+        server.AssertResponsesExclude("valid-key", "server-token");
     }
 
     [Fact]
-    public async Task InvalidRequestAndStorageFailuresAreSafeRpcErrors()
+    public async Task InvalidRequestAndStorageFailuresAreSafeHubErrors()
     {
-        using var server = new Factory();
+        using var server = new SignalRTestServer();
         using var client = server.Connect();
         var invalid = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginAsync(""));
-        Assert.Equal(StatusCode.InvalidArgument, Assert.IsType<RpcException>(invalid.InnerException).StatusCode);
+        Assert.IsType<HubException>(invalid.InnerException);
         server.Secrets.Fail = true;
         var failed = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginAsync("valid-key"));
-        Assert.Equal(StatusCode.Internal, Assert.IsType<RpcException>(failed.InnerException).StatusCode);
+        Assert.IsType<HubException>(failed.InnerException);
         Assert.DoesNotContain("sensitive-storage-value", failed.ToString());
+        server.AssertResponsesExclude("sensitive-storage-value", "valid-key");
     }
 
     [Fact]
@@ -132,112 +116,175 @@ public class ProviderAuthIntegrationTests
         var directory = Path.Combine(Path.GetTempPath(), "vibere-restart-" + Guid.NewGuid());
         Directory.CreateDirectory(directory);
         var database = Path.Combine(directory, "server.db");
-        var secrets = new Secrets();
+        var secrets = new TestSecrets();
         try
         {
-            using (var first = new Factory(database, secrets))
+            using (var first = new SignalRTestServer(database, secrets))
             using (var client = first.Connect()) await client.LoginAsync("persistent-key");
-            using var restarted = new Factory(database, secrets);
+            using var restarted = new SignalRTestServer(database, secrets);
             using var reconnect = restarted.Connect();
             Assert.Equal(AuthState.Authenticated, (await reconnect.GetStatusAsync()).State);
         }
         finally { Directory.Delete(directory, true); }
     }
 
-    private sealed class Factory : WebApplicationFactory<Program>
+    [Theory]
+    [InlineData("completed", WireBrowserState.Completed)]
+    [InlineData("denied", WireBrowserState.Failed)]
+    [InlineData("expired", WireBrowserState.Expired)]
+    [InlineData("unrecognized-provider-state", WireBrowserState.Failed)]
+    public async Task BrowserStreamCompletesWithTerminalProviderResult(string providerState, WireBrowserState expected)
     {
-        private readonly string? _temporaryDirectory;
-        private readonly string _database;
-        public Secrets Secrets { get; }
-        public BrowserFlow Browser { get; } = new();
-        public List<string> Responses { get; } = [];
-        public Factory(string? database = null, Secrets? secrets = null)
-        {
-            if (database is null)
-            {
-                _temporaryDirectory = Path.Combine(Path.GetTempPath(), "vibere-server-test-" + Guid.NewGuid());
-                Directory.CreateDirectory(_temporaryDirectory);
-                database = Path.Combine(_temporaryDirectory, "server.db");
-            }
-            _database = database;
-            Secrets = secrets ?? new Secrets();
-        }
-
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:VibeRe"] = $"Data Source={_database};Pooling=False",
-                ["Server:AccessToken"] = "server-token",
-                ["Logging:LogLevel:Default"] = "Warning"
-            }));
-            builder.ConfigureServices(services =>
-            {
-                services.RemoveAll<ISecretStore>();
-                services.RemoveAll<IAuthFlow>();
-                services.RemoveAll<IBrowserAuthFlow>();
-                services.AddSingleton<ISecretStore>(Secrets);
-                services.AddSingleton<IAuthFlow, Flow>();
-                services.AddSingleton<IBrowserAuthFlow>(Browser);
-            });
-        }
-
-        public IVibeReClient Connect(string? token = "server-token") =>
-            new VibeReClient("http://localhost", token, new RecordingHandler(Server.CreateHandler(), Responses));
-
-        protected override void Dispose(bool disposing)
-        {
-            base.Dispose(disposing);
-            if (disposing && _temporaryDirectory is not null && Directory.Exists(_temporaryDirectory))
-                Directory.Delete(_temporaryDirectory, true);
-        }
+        using var server = new SignalRTestServer();
+        server.Browser.PollState = providerState;
+        await using var hub = server.CreateHub();
+        await hub.StartAsync();
+        var attempt = await hub.InvokeAsync<BrowserLoginReply>("StartBrowserLogin");
+        var updates = await WatchToEnd(hub, attempt.AttemptId);
+        Assert.Equal(expected, updates[^1].State);
+        Assert.All(updates, update => Assert.Equal(attempt.AttemptId, update.AttemptId));
+        Assert.Equal(expected == WireBrowserState.Completed, !server.Secrets.Values.IsEmpty);
+        server.AssertResponsesExclude("browser-key", "exchange-secret", server.Browser.LastVerifier);
     }
 
-    private sealed class RecordingHandler(HttpMessageHandler inner, List<string> responses) : DelegatingHandler(inner)
+    [Fact]
+    public async Task ExpiredAttemptCompletesStreamWithoutContactingProvider()
     {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var response = await base.SendAsync(request, cancellationToken);
-            // Inspect the actual transport payload so application mapping cannot hide leaked secrets.
-            responses.Add(Encoding.UTF8.GetString(await response.Content.ReadAsByteArrayAsync(cancellationToken)));
-            return response;
-        }
+        using var server = new SignalRTestServer();
+        server.Browser.FailPoll = true;
+        await using var hub = server.CreateHub();
+        await hub.StartAsync();
+        var attempt = await hub.InvokeAsync<BrowserLoginReply>("StartBrowserLogin");
+        server.Clock.Advance(TimeSpan.FromMinutes(6));
+        var updates = await WatchToEnd(hub, attempt.AttemptId);
+        Assert.Equal(WireBrowserState.Expired, updates[^1].State);
+        Assert.Empty(server.Secrets.Values);
     }
 
-    private sealed class Secrets : ISecretStore
+    [Fact]
+    public async Task ExplicitCancelCompletesAnActiveBrowserStream()
     {
-        public Dictionary<string, string> Values { get; } = [];
-        public bool Fail { get; set; }
-        public Task<string?> GetAsync(string key, CancellationToken cancellationToken)
-        {
-            if (Fail) throw new IOException("sensitive-storage-value");
-            return Task.FromResult(Values.GetValueOrDefault(key));
-        }
-        public Task SetAsync(string key, string value, CancellationToken cancellationToken) { Values[key] = value; return Task.CompletedTask; }
-        public Task DeleteAsync(string key, CancellationToken cancellationToken) { Values.Remove(key); return Task.CompletedTask; }
+        using var server = new SignalRTestServer();
+        server.Browser.PollState = "pending";
+        await using var hub = server.CreateHub();
+        await hub.StartAsync();
+        var attempt = await hub.InvokeAsync<BrowserLoginReply>("StartBrowserLogin");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await using var stream = hub.StreamAsync<BrowserLoginReply>("WatchBrowserLogin", attempt.AttemptId,
+            deadline.Token).GetAsyncEnumerator();
+        Assert.True(await stream.MoveNextAsync());
+        Assert.Equal(WireBrowserState.Waiting, stream.Current.State);
+        var canceled = await hub.InvokeAsync<BrowserLoginReply>("CancelBrowserLogin", attempt.AttemptId);
+        Assert.Equal(WireBrowserState.Canceled, canceled.State);
+        var terminal = WireBrowserState.Waiting;
+        while (await stream.MoveNextAsync()) terminal = stream.Current.State;
+        Assert.Equal(WireBrowserState.Canceled, terminal);
+        Assert.Empty(server.Secrets.Values);
     }
 
-    private sealed class Flow : IAuthFlow
+    [Fact]
+    public async Task BrowserProviderExceptionsAreSafeTerminalResults()
     {
-        public string ProviderName => "mistral";
-        public Uri BaseUri => new("https://api.mistral.ai/");
-        public Task<ProviderAuthStatus> ValidateAsync(string apiKey, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ProviderAuthStatus(apiKey == "bad-key" ? ProviderAuthState.InvalidCredential
-                : ProviderAuthState.Authenticated, "Verified by test provider."));
+        using var server = new SignalRTestServer();
+        server.Browser.FailPoll = true;
+        await using var hub = server.CreateHub();
+        await hub.StartAsync();
+        var attempt = await hub.InvokeAsync<BrowserLoginReply>("StartBrowserLogin");
+        var updates = await WatchToEnd(hub, attempt.AttemptId);
+        Assert.Equal(WireBrowserState.Failed, updates[^1].State);
+        Assert.DoesNotContain("sensitive-provider-value", updates[^1].Message);
+        server.Browser.FailStart = true;
+        var exception = await Assert.ThrowsAsync<HubException>(() => hub.InvokeAsync<BrowserLoginReply>("StartBrowserLogin"));
+        Assert.DoesNotContain("sensitive-provider-value", exception.ToString());
+        server.AssertResponsesExclude("sensitive-provider-value", "exchange-secret");
     }
 
-    private sealed class BrowserFlow : IBrowserAuthFlow
+    [Fact]
+    public async Task UnknownAttemptReturnsSafeStreamError()
     {
-        public string? LastVerifier { get; private set; }
-        public string ProviderName => "mistral";
-        public Task<BrowserProcess> StartAsync(string challenge, CancellationToken cancellationToken) =>
-            Task.FromResult(new BrowserProcess("process", new("https://console.mistral.ai/login"),
-                new("https://console.mistral.ai/api/poll"), DateTimeOffset.UtcNow.AddMinutes(5)));
-        public Task<BrowserPoll> PollAsync(Uri pollUri, CancellationToken cancellationToken) => Task.FromResult(new BrowserPoll("completed", "exchange"));
-        public Task<string> ExchangeAsync(string processId, string exchangeToken, string verifier, CancellationToken cancellationToken)
+        using var server = new SignalRTestServer();
+        await using var hub = server.CreateHub();
+        await hub.StartAsync();
+        await Assert.ThrowsAsync<HubException>(() => WatchToEnd(hub, "unknown-attempt-secret"));
+        server.AssertResponsesExclude("unknown-attempt-secret");
+    }
+
+    [Fact]
+    public async Task DisconnectDoesNotCancelServerOwnedAttemptAndAnotherClientCanResume()
+    {
+        using var server = new SignalRTestServer();
+        server.Browser.PollState = "pending";
+        string attemptId;
+        await using (var first = server.CreateHub())
         {
-            LastVerifier = verifier;
-            return Task.FromResult("browser-key");
+            await first.StartAsync();
+            attemptId = (await first.InvokeAsync<BrowserLoginReply>("StartBrowserLogin")).AttemptId;
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            await using var stream = first.StreamAsync<BrowserLoginReply>("WatchBrowserLogin", attemptId,
+                deadline.Token).GetAsyncEnumerator();
+            Assert.True(await stream.MoveNextAsync());
+            Assert.Equal(WireBrowserState.Waiting, stream.Current.State);
+            await first.StopAsync();
         }
+        server.Browser.PollState = "completed";
+        server.Clock.Advance(TimeSpan.FromSeconds(4));
+        await using var second = server.CreateHub();
+        await second.StartAsync();
+        var updates = await WatchToEnd(second, attemptId);
+        Assert.Equal(WireBrowserState.Completed, updates[^1].State);
+        Assert.Contains("browser-key", server.Secrets.Values.Values);
+    }
+
+    [Fact]
+    public async Task CancelingOnlyTheStreamKeepsAttemptAvailableForAnotherWatcher()
+    {
+        using var server = new SignalRTestServer();
+        server.Browser.PollState = "pending";
+        await using var hub = server.CreateHub();
+        await hub.StartAsync();
+        var attempt = await hub.InvokeAsync<BrowserLoginReply>("StartBrowserLogin");
+        using (var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+        {
+            await using var stream = hub.StreamAsync<BrowserLoginReply>("WatchBrowserLogin", attempt.AttemptId,
+                cancellation.Token).GetAsyncEnumerator();
+            Assert.True(await stream.MoveNextAsync());
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await stream.MoveNextAsync());
+        }
+        server.Browser.PollState = "completed";
+        server.Clock.Advance(TimeSpan.FromSeconds(4));
+        var updates = await WatchToEnd(hub, attempt.AttemptId);
+        Assert.Equal(WireBrowserState.Completed, updates[^1].State);
+    }
+
+    [Fact]
+    public async Task DisconnectDuringCredentialExchangeDoesNotLoseServerLogin()
+    {
+        using var server = new SignalRTestServer();
+        server.Browser.ExchangeResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var first = server.CreateHub();
+        await first.StartAsync();
+        var attempt = await first.InvokeAsync<BrowserLoginReply>("StartBrowserLogin");
+        var watcher = WatchToEnd(first, attempt.AttemptId);
+        await server.Browser.ExchangeStarted.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        await first.StopAsync();
+        server.Browser.ExchangeResult.SetResult("browser-key");
+        try { await watcher; } catch (Exception e) when (e is OperationCanceledException or IOException or HubException) { }
+        await using var second = server.CreateHub();
+        await second.StartAsync();
+        var updates = await WatchToEnd(second, attempt.AttemptId);
+        Assert.Equal(WireBrowserState.Completed, updates[^1].State);
+        Assert.Contains("browser-key", server.Secrets.Values.Values);
+        server.AssertResponsesExclude("browser-key", "exchange-secret", server.Browser.LastVerifier);
+    }
+
+    private static async Task<List<BrowserLoginReply>> WatchToEnd(HubConnection hub, string attemptId)
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var results = new List<BrowserLoginReply>();
+        await foreach (var update in hub.StreamAsync<BrowserLoginReply>("WatchBrowserLogin", attemptId, deadline.Token))
+            results.Add(update);
+        Assert.NotEmpty(results);
+        return results;
     }
 }

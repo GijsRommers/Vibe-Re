@@ -1,6 +1,6 @@
-using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+using VibeRe.Contracts;
 
 namespace VibeRe.Client.Infrastructure.Adapters;
 
@@ -9,8 +9,7 @@ public sealed class ServerReadinessProbe : IServerReadinessProbe
     public async Task<bool> IsReadyAsync(Uri uri, CancellationToken cancellationToken = default)
     {
         using var client = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(1) };
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(uri, "/.well-known/vibe-re/server"))
-            { Version = HttpVersion.Version20, VersionPolicy = HttpVersionPolicy.RequestVersionExact };
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(uri, ServerProtocol.ReadinessPath));
         try
         {
             using var response = await client.SendAsync(request, cancellationToken);
@@ -18,7 +17,8 @@ public sealed class ServerReadinessProbe : IServerReadinessProbe
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
             return document.RootElement.TryGetProperty("application", out var app) && app.GetString() == "vibe-re" &&
                 document.RootElement.TryGetProperty("protocolVersion", out var protocol) &&
-                protocol.ValueKind == JsonValueKind.Number && protocol.TryGetInt32(out var value) && value == 1;
+                protocol.ValueKind == JsonValueKind.Number && protocol.TryGetInt32(out var value) && value == ServerProtocol.Version &&
+                document.RootElement.TryGetProperty("transport", out var transport) && transport.GetString() == ServerProtocol.Transport;
         }
         catch (HttpRequestException) { return false; }
         catch (JsonException) { return false; }

@@ -1,11 +1,6 @@
-using System.Buffers.Binary;
-using System.Net;
-using System.Net.Http.Headers;
-using Google.Protobuf;
-using Grpc.Core;
+using Microsoft.AspNetCore.SignalR;
 using VibeRe.Client.Application;
-using VibeRe.Client.Infrastructure;
-using Protocol = VibeRe.Protocol;
+using Protocol = VibeRe.Contracts;
 
 namespace VibeRe.Client.Tests;
 
@@ -19,11 +14,14 @@ public sealed class ClientTransportTests
     [InlineData(Protocol.AuthState.Unavailable, AuthState.Unavailable, false)]
     public async Task AuthenticationRepliesBecomeApplicationStatus(Protocol.AuthState wireState, AuthState state, bool needsLogin)
     {
-        using var handler = new ReplyHandler((_, _) => Task.FromResult(Reply(new Protocol.AuthStatusReply
+        using var server = new SignalRTestServer(new()
         {
-            State = wireState, Message = "Provider status."
-        })));
-        using IVibeReClient client = new VibeReClient("https://server.example", httpHandler: handler);
+            Authenticate = (_, _) => Task.FromResult(new Protocol.AuthStatusReply
+            {
+                State = wireState, Message = "Provider status."
+            })
+        });
+        using IVibeReClient client = server.CreateClient();
 
         foreach (var result in new[] { await client.LoginAsync("api-key"), await client.GetStatusAsync(), await client.LogoutAsync() })
         {
@@ -31,6 +29,8 @@ public sealed class ClientTransportTests
             Assert.Equal("Provider status.", result.Message);
             Assert.Equal(needsLogin, result.NeedsLogin);
         }
+        Assert.Equal(new[] { "Login", "GetStatus", "Logout" }, server.Scenario.Calls);
+        Assert.Equal("api-key", Assert.Single(server.Scenario.ApiKeys));
     }
 
     [Theory]
@@ -38,16 +38,19 @@ public sealed class ClientTransportTests
     [InlineData(Protocol.BrowserLoginState.Failed, BrowserLoginState.Failed)]
     [InlineData(Protocol.BrowserLoginState.Expired, BrowserLoginState.Expired)]
     [InlineData(Protocol.BrowserLoginState.Canceled, BrowserLoginState.Canceled)]
-    public async Task BrowserRepliesBecomeApplicationResults(Protocol.BrowserLoginState wireState, BrowserLoginState state)
+    public async Task StreamedBrowserRepliesBecomeApplicationResults(Protocol.BrowserLoginState wireState, BrowserLoginState state)
     {
-        using var handler = new ReplyHandler((request, _) => Task.FromResult(Reply(Method(request) == "StartBrowserLogin"
-            ? StartedAttempt()
-            : new Protocol.BrowserLoginReply
-            {
-                State = wireState, Message = "Browser result.",
-                AuthStatus = new() { State = Protocol.AuthState.Authenticated, Message = "Verified." }
-            })));
-        using IVibeReClient client = new VibeReClient("https://server.example", httpHandler: handler);
+        using var server = new SignalRTestServer(new()
+        {
+            Watch = (_, ct) => TestAuthScenario.Replies([
+                TestAuthScenario.StartedAttempt(),
+                new()
+                {
+                    State = wireState, Message = "Browser result.",
+                    AuthStatus = new() { State = Protocol.AuthState.Authenticated, Message = "Verified." }
+                }], ct)
+        });
+        using IVibeReClient client = server.CreateClient();
         BrowserLoginResult? shown = null;
 
         var result = await client.LoginWithBrowserAsync(attempt =>
@@ -64,39 +67,52 @@ public sealed class ClientTransportTests
         Assert.Equal(state, result.State);
         Assert.Equal("Browser result.", result.Message);
         Assert.Equal(new AuthStatus { State = AuthState.Authenticated, Message = "Verified." }, result.AuthStatus);
+        Assert.Equal(new[] { "StartBrowserLogin", "WatchBrowserLogin" }, server.Scenario.Calls);
+        Assert.Equal("attempt", Assert.Single(server.Scenario.WatchedAttempts));
+        Assert.Empty(server.Scenario.CanceledAttempts);
     }
 
-    public static IEnumerable<object[]> RpcFailures()
-    {
-        var statuses = new[] { StatusCode.Cancelled, StatusCode.Unavailable, StatusCode.Unauthenticated,
-            StatusCode.InvalidArgument, StatusCode.Internal, StatusCode.DeadlineExceeded };
-        var methods = new[] { "Login", "GetStatus", "Logout", "StartBrowserLogin", "PollBrowserLogin" };
-        return from method in methods from status in statuses select new object[] { method, status };
-    }
+    public static IEnumerable<object[]> HubFailures() =>
+        from method in new[] { "Login", "GetStatus", "Logout", "StartBrowserLogin", "WatchBrowserLogin" }
+        from failure in new[] { "fault", "server-canceled", "hub" }
+        select new object[] { method, failure };
 
     [Theory]
-    [MemberData(nameof(RpcFailures))]
-    public async Task RpcFailuresBecomeApplicationErrorsEvenWhenServerCancels(string failingMethod, StatusCode status)
+    [MemberData(nameof(HubFailures))]
+    public async Task HubFailuresBecomeApplicationErrorsWithoutCancelingCaller(string failingMethod, string failure)
     {
-        var cleanupCalls = 0;
-        using var handler = new ReplyHandler((request, _) =>
+        const string privateDetail = "Provider secret diagnostic: api-key-do-not-expose.";
+        const string safeDetail = "The server request could not be completed.";
+        var error = failure switch
         {
-            var method = Method(request);
-            if (method == failingMethod) return Task.FromResult(Error(status, "Server error detail."));
-            if (method == "CancelBrowserLogin") cleanupCalls++;
-            return Task.FromResult(Reply(StartedAttempt()));
+            "server-canceled" => (Exception)new OperationCanceledException(privateDetail),
+            "hub" => new HubException(safeDetail),
+            _ => new InvalidOperationException(privateDetail)
+        };
+        using var server = new SignalRTestServer(new()
+        {
+            Authenticate = (method, _) => method == failingMethod
+                ? Task.FromException<Protocol.AuthStatusReply>(error)
+                : Task.FromResult(new Protocol.AuthStatusReply()),
+            Start = _ => failingMethod == "StartBrowserLogin"
+                ? Task.FromException<Protocol.BrowserLoginReply>(error)
+                : Task.FromResult(TestAuthScenario.StartedAttempt()),
+            Watch = (_, ct) => TestAuthScenario.Failure(error, ct)
         });
-        using IVibeReClient client = new VibeReClient("https://server.example", httpHandler: handler);
+        using IVibeReClient client = server.CreateClient();
         using var caller = new CancellationTokenSource();
 
-        var error = await Assert.ThrowsAsync<ServerConnectionException>(() => InvokeAsync(client, failingMethod, caller.Token));
+        var result = await Assert.ThrowsAsync<ServerConnectionException>(() =>
+            InvokeAsync(client, failingMethod, caller.Token).WaitAsync(TimeSpan.FromSeconds(5)));
 
         Assert.False(caller.IsCancellationRequested);
-        Assert.Equal(status, Assert.IsType<RpcException>(error.InnerException).StatusCode);
-        Assert.Equal(status == StatusCode.Unavailable
-            ? "Could not connect to this server. Check its address and whether it is running."
-            : "Server error detail.", error.Message);
-        Assert.Equal(failingMethod == "PollBrowserLogin" ? 1 : 0, cleanupCalls);
+        Assert.IsType<HubException>(result.InnerException);
+        Assert.False(string.IsNullOrWhiteSpace(result.Message));
+        Assert.DoesNotContain(privateDetail, result.Message);
+        if (failure == "hub") Assert.Contains(safeDetail, result.Message);
+        Assert.Equal(1, server.Scenario.Calls.Count(method => method == failingMethod));
+        if (failingMethod == "WatchBrowserLogin")
+            Assert.Equal(1, server.Scenario.Calls.Count(method => method == "StartBrowserLogin"));
     }
 
     [Theory]
@@ -104,25 +120,38 @@ public sealed class ClientTransportTests
     [InlineData("GetStatus")]
     [InlineData("Logout")]
     [InlineData("StartBrowserLogin")]
-    public async Task CallerCancellationBecomesOperationCanceledException(string method)
+    [InlineData("WatchBrowserLogin")]
+    public async Task CallerCancellationPreservesTheCallerToken(string method)
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var handler = new ReplyHandler(async (_, cancellationToken) =>
+        using var server = new SignalRTestServer(new()
         {
-            started.TrySetResult();
-            await Task.Delay(Timeout.Infinite, cancellationToken);
-            throw new InvalidOperationException("The request should end through cancellation.");
+            Authenticate = async (_, ct) =>
+            {
+                started.TrySetResult();
+                await Task.Delay(Timeout.Infinite, ct);
+                return new();
+            },
+            Start = async ct =>
+            {
+                if (method != "StartBrowserLogin") return TestAuthScenario.StartedAttempt();
+                started.TrySetResult();
+                await Task.Delay(Timeout.Infinite, ct);
+                return new();
+            },
+            Watch = (_, ct) => TestAuthScenario.WaitForCancellation(started, ct)
         });
-        using IVibeReClient client = new VibeReClient("https://server.example", httpHandler: handler);
+        using IVibeReClient client = server.CreateClient();
         using var caller = new CancellationTokenSource();
         var operation = InvokeAsync(client, method, caller.Token);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         caller.Cancel();
 
-        var error = await Assert.ThrowsAsync<OperationCanceledException>(() => operation.WaitAsync(TimeSpan.FromSeconds(5)));
+        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(caller.Token, error.CancellationToken);
-        Assert.Equal(StatusCode.Cancelled, Assert.IsType<RpcException>(error.InnerException).StatusCode);
+        Assert.Equal(1, server.Scenario.Calls.Count(call => call == method));
+        Assert.Equal(method == "WatchBrowserLogin" ? 1 : 0, server.Scenario.CanceledAttempts.Count);
     }
 
     [Theory]
@@ -133,15 +162,11 @@ public sealed class ClientTransportTests
     [InlineData("/login")]
     public async Task UntrustedBrowserUrlIsRejectedAndAttemptIsCanceled(string url)
     {
-        var calls = new List<string>();
-        using var handler = new ReplyHandler((request, _) =>
+        using var server = new SignalRTestServer(new()
         {
-            calls.Add(Method(request));
-            var reply = StartedAttempt();
-            reply.SignInUrl = url;
-            return Task.FromResult(Reply(reply));
+            Start = _ => Task.FromResult(TestAuthScenario.StartedAttempt() with { SignInUrl = url })
         });
-        using IVibeReClient client = new VibeReClient("https://server.example", httpHandler: handler);
+        using IVibeReClient client = server.CreateClient();
         var opened = false;
 
         var error = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginWithBrowserAsync(_ =>
@@ -152,17 +177,18 @@ public sealed class ClientTransportTests
 
         Assert.Contains("untrusted", error.Message);
         Assert.False(opened);
-        Assert.Equal(new[] { "StartBrowserLogin", "CancelBrowserLogin" }, calls);
+        Assert.Equal(new[] { "StartBrowserLogin", "CancelBrowserLogin" }, server.Scenario.Calls);
+        Assert.Equal("attempt", Assert.Single(server.Scenario.CanceledAttempts));
     }
 
     [Fact]
     public async Task UnknownAuthenticationStatusIsRejected()
     {
-        using var handler = new ReplyHandler((_, _) => Task.FromResult(Reply(new Protocol.AuthStatusReply
+        using var server = new SignalRTestServer(new()
         {
-            State = (Protocol.AuthState)999
-        })));
-        using IVibeReClient client = new VibeReClient("https://server.example", httpHandler: handler);
+            Authenticate = (_, _) => Task.FromResult(new Protocol.AuthStatusReply { State = (Protocol.AuthState)999 })
+        });
+        using IVibeReClient client = server.CreateClient();
 
         var error = await Assert.ThrowsAsync<ServerConnectionException>(() => client.GetStatusAsync());
 
@@ -172,20 +198,17 @@ public sealed class ClientTransportTests
     [Fact]
     public async Task UnknownBrowserStatusIsRejectedAndCleanedUp()
     {
-        var cleanupCalls = 0;
-        using var handler = new ReplyHandler((request, _) =>
+        using var server = new SignalRTestServer(new()
         {
-            var reply = StartedAttempt();
-            if (Method(request) == "PollBrowserLogin") reply.State = (Protocol.BrowserLoginState)999;
-            if (Method(request) == "CancelBrowserLogin") cleanupCalls++;
-            return Task.FromResult(Reply(reply));
+            Watch = (_, ct) => TestAuthScenario.Replies([
+                TestAuthScenario.StartedAttempt() with { State = (Protocol.BrowserLoginState)999 }], ct)
         });
-        using IVibeReClient client = new VibeReClient("https://server.example", httpHandler: handler);
+        using IVibeReClient client = server.CreateClient();
 
         var error = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginWithBrowserAsync(_ => Task.CompletedTask));
 
         Assert.Contains("unsupported browser login status", error.Message);
-        Assert.Equal(1, cleanupCalls);
+        Assert.Equal("attempt", Assert.Single(server.Scenario.CanceledAttempts));
     }
 
     private static Task InvokeAsync(IVibeReClient client, string method, CancellationToken cancellationToken) => method switch
@@ -193,46 +216,7 @@ public sealed class ClientTransportTests
         "Login" => client.LoginAsync("api-key", cancellationToken),
         "GetStatus" => client.GetStatusAsync(cancellationToken),
         "Logout" => client.LogoutAsync(cancellationToken),
-        "StartBrowserLogin" or "PollBrowserLogin" => client.LoginWithBrowserAsync(_ => Task.CompletedTask, cancellationToken),
+        "StartBrowserLogin" or "WatchBrowserLogin" => client.LoginWithBrowserAsync(_ => Task.CompletedTask, cancellationToken),
         _ => throw new ArgumentOutOfRangeException(nameof(method))
     };
-
-    private static string Method(HttpRequestMessage request) => request.RequestUri!.AbsolutePath.Split('/')[^1];
-
-    private static Protocol.BrowserLoginReply StartedAttempt() => new()
-    {
-        AttemptId = "attempt", SignInUrl = "https://console.mistral.ai/login",
-        ExpiresAtUnixSeconds = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds(),
-        State = Protocol.BrowserLoginState.Waiting, Message = "Open the browser."
-    };
-
-    private static HttpResponseMessage Reply(IMessage message)
-    {
-        var payload = message.ToByteArray();
-        var frame = new byte[payload.Length + 5];
-        BinaryPrimitives.WriteInt32BigEndian(frame.AsSpan(1, 4), payload.Length);
-        payload.CopyTo(frame, 5);
-        return Response(frame, StatusCode.OK);
-    }
-
-    private static HttpResponseMessage Error(StatusCode status, string message) => Response([], status, message);
-
-    private static HttpResponseMessage Response(byte[] content, StatusCode status, string message = "")
-    {
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Version = HttpVersion.Version20,
-            Content = new ByteArrayContent(content)
-        };
-        response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/grpc");
-        response.TrailingHeaders.Add("grpc-status", ((int)status).ToString());
-        if (message.Length > 0) response.TrailingHeaders.Add("grpc-message", Uri.EscapeDataString(message));
-        return response;
-    }
-
-    private sealed class ReplyHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            send(request, cancellationToken);
-    }
 }
