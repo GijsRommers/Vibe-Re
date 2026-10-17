@@ -20,10 +20,10 @@ PUBLISH   := dotnet publish -c $(CONFIG) -r $(RID) --self-contained \
 all: build
 
 build:
-	dotnet build vibe-re.Desktop.slnf -c $(CONFIG)
+	dotnet build vibe-re.desktop.slnf -c $(CONFIG)
 
 test:
-	dotnet test vibe-re.Desktop.slnf -c $(CONFIG)
+	dotnet test vibe-re.desktop.slnf -c $(CONFIG)
 
 publish:
 	$(PUBLISH) VibeRe.Cli -o "$(OUT)/cli"
@@ -51,5 +51,5 @@ stop:
 	@pkill -x vibe-re-server || true
 
 clean:
-	dotnet clean vibe-re.Desktop.slnf
+	dotnet clean vibe-re.desktop.slnf
 	rm -rf artifacts

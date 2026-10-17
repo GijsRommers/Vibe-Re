@@ -90,7 +90,7 @@ or overwrite user databases.
 
 Install a stable .NET 10 SDK (`global.json` allows newer 10.0 feature bands) and
 PowerShell 7 for the cross-platform scripts. Windows PowerShell 5.1 also works
-for these scripts. The desktop solution filter builds CLI, server, Avalonia,
+for these scripts. The shared `vibe-re.desktop.slnf` solution filter builds CLI, server, Avalonia,
 shared libraries and all non-mobile test projects (including CLI tests) without loading MAUI:
 
 ```powershell
@@ -132,9 +132,13 @@ startup validation, not a full interactive UI or real-provider login test.
 
 MAUI is excluded from desktop CI and all release artifacts. Android and iOS need
 MAUI workloads, platform SDKs, and device/emulator validation; iOS distribution
-also needs a Mac, Apple provisioning and signing. This Windows environment has
-no MAUI workloads. No APK, AAB or IPA is claimed as built, tested or signed.
-The current template app identifier/version also needs a distribution decision.
+also needs a Mac, Apple provisioning and signing. The mobile toolchain follow-up
+in PR #5 validated a local Android Debug APK with MAUI 10.0.20 and Android API 36.
+That debug build is separate from this release pipeline: no APK, AAB or IPA is
+produced here, and device execution or an iOS native package is not claimed.
+On Windows/Linux the mobile project defaults to Android; macOS also includes
+iOS, which can be explicitly included with `-p:EnableIosTarget=true`.
+The current template app identifier/version still needs a distribution decision.
 The shared client library is covered by desktop CI. Mobile release automation
 should be added separately once the platform toolchains and signing identities
 are configured. No signing credentials are required by this workflow.
