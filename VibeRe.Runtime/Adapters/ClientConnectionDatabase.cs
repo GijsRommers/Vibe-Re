@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-namespace VibeRe.Client.Configuration;
+namespace VibeRe.Runtime.Adapters;
 
 // Client-owned storage: opening/managing servers never requires a running VibeRe server.
 public sealed class ClientConnectionDatabase(string path) : IClientConfigurationStore
@@ -41,7 +41,7 @@ public sealed class ClientConnectionDatabase(string path) : IClientConfiguration
     {
         using var version = Command(connection, transaction, "PRAGMA user_version;");
         var schemaVersion = Convert.ToInt32(await version.ExecuteScalarAsync(ct));
-        if (schemaVersion > 2)
+        if (schemaVersion > 3)
             throw new InvalidDataException("Client database was created by a newer VibeRe version.");
         if (schemaVersion == 1)
         {
@@ -50,6 +50,12 @@ public sealed class ClientConnectionDatabase(string path) : IClientConfiguration
                 UPDATE ClientServers SET StartLocally = 1 WHERE Name = 'local' AND Address LIKE 'http://localhost:%' AND $desktop;
                 """);
             migration.Parameters.AddWithValue("$desktop", !OperatingSystem.IsAndroid() && !OperatingSystem.IsIOS());
+            await migration.ExecuteNonQueryAsync(ct);
+        }
+        if (schemaVersion is 1 or 2)
+        {
+            using var migration = Command(connection, transaction,
+                "ALTER TABLE ClientSettings ADD COLUMN ServerRequired INTEGER NOT NULL DEFAULT 1 CHECK (ServerRequired IN (0, 1));");
             await migration.ExecuteNonQueryAsync(ct);
         }
         using var schema = Command(connection, transaction, """
@@ -63,19 +69,21 @@ public sealed class ClientConnectionDatabase(string path) : IClientConfiguration
             );
             CREATE TABLE IF NOT EXISTS ClientSettings (
                 Id INTEGER PRIMARY KEY CHECK (Id = 1),
-                ActiveServerId TEXT REFERENCES ClientServers(Id) ON DELETE SET NULL
+                ActiveServerId TEXT REFERENCES ClientServers(Id) ON DELETE SET NULL,
+                ServerRequired INTEGER NOT NULL DEFAULT 1 CHECK (ServerRequired IN (0, 1))
             );
-            PRAGMA user_version = 2;
+            PRAGMA user_version = 3;
             """);
         await schema.ExecuteNonQueryAsync(ct);
     }
 
     private static async Task<ClientConfiguration?> ReadAsync(SqliteConnection connection, SqliteTransaction transaction, CancellationToken ct)
     {
-        using var settings = Command(connection, transaction, "SELECT ActiveServerId FROM ClientSettings WHERE Id = 1;");
+        using var settings = Command(connection, transaction, "SELECT ActiveServerId, ServerRequired FROM ClientSettings WHERE Id = 1;");
         using var settingsReader = await settings.ExecuteReaderAsync(ct);
         if (!await settingsReader.ReadAsync(ct)) return null;
         var activeId = settingsReader.IsDBNull(0) ? null : settingsReader.GetString(0);
+        var serverRequired = settingsReader.GetBoolean(1);
         await settingsReader.CloseAsync();
         var servers = new List<ServerConnection>();
         using var query = Command(connection, transaction,
@@ -83,7 +91,7 @@ public sealed class ClientConnectionDatabase(string path) : IClientConfiguration
         using var reader = await query.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
             servers.Add(new(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetBoolean(3), reader.GetBoolean(4)));
-        return new(servers.FirstOrDefault(x => x.Id.ToString("D") == activeId)?.Name, servers);
+        return new(servers.FirstOrDefault(x => x.Id.ToString("D") == activeId)?.Name, servers, serverRequired);
     }
 
     private static async Task WriteAsync(SqliteConnection connection, SqliteTransaction transaction, ClientConfiguration config, CancellationToken ct)
@@ -103,8 +111,9 @@ public sealed class ClientConnectionDatabase(string path) : IClientConfiguration
             insert.Parameters.AddWithValue("$position", position);
             await insert.ExecuteNonQueryAsync(ct);
         }
-        using var settings = Command(connection, transaction, "INSERT INTO ClientSettings (Id, ActiveServerId) VALUES (1, $active);");
+        using var settings = Command(connection, transaction, "INSERT INTO ClientSettings (Id, ActiveServerId, ServerRequired) VALUES (1, $active, $required);");
         settings.Parameters.AddWithValue("$active", config.ActiveServer is null ? DBNull.Value : config.Find().Id.ToString("D"));
+        settings.Parameters.AddWithValue("$required", config.ServerRequired);
         await settings.ExecuteNonQueryAsync(ct);
     }
 
@@ -117,7 +126,7 @@ public sealed class ClientConnectionDatabase(string path) : IClientConfiguration
         foreach (var server in config.Servers)
         {
             ServerConnection.ValidateName(server.Name);
-            ServerConnection.NormalizeAddress(server.Address);
+            ServerAddress.Normalize(server.Address);
             if (server.StartLocally && !new Uri(server.Address).IsLoopback)
                 throw new InvalidDataException("Remote connections cannot launch a local server.");
         }

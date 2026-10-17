@@ -1,56 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:client="clr-namespace:VibeRe.Client;assembly=VibeRe.Client"
-             x:Class="VibeRe.Mobile.MainPage" x:DataType="client:ConnectionSettingsViewModel" Title="VibeRe">
-    <ScrollView>
-        <VerticalStackLayout Padding="28,40" Spacing="20" MaximumWidthRequest="480" HorizontalOptions="Center">
-            <Label Text="VibeRe" FontSize="32" FontAttributes="Bold" HorizontalOptions="Center" />
-            <Label Text="Your workspace, connected." HorizontalOptions="Center" TextColor="#687285" />
-            <VerticalStackLayout Spacing="8">
-                <Grid ColumnDefinitions="*,Auto">
-                    <Label Text="Server" FontAttributes="Bold" VerticalOptions="Center" />
-                    <Button Grid.Column="1" Text="Manage servers" Command="{Binding ToggleServerSettingsCommand}"
-                            BackgroundColor="Transparent" TextColor="#687285" FontSize="12" />
-                </Grid>
-                <Picker Title="Choose a server" ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
-                        IsEnabled="{Binding CanEdit}" />
-            </VerticalStackLayout>
-            <Border Padding="24" StrokeShape="RoundRectangle 16" Stroke="#E2E6ED">
-                <VerticalStackLayout Spacing="18">
-                    <Label Text="{Binding LoginTitle}" FontSize="24" FontAttributes="Bold" />
-                    <Label Text="{Binding Status}" />
-                    <Label Text="{Binding LoginDescription}"
-                           IsVisible="{Binding NeedsLogin}" />
-                    <Button Text="Log in to Mistral" Command="{Binding LoginBrowserCommand}" IsVisible="{Binding NeedsLogin}"
-                            BackgroundColor="#315CF5" TextColor="White" CornerRadius="8" Padding="20,14" />
-                    <Editor Text="{Binding BrowserUrl}" IsReadOnly="True" AutoSize="TextChanges" IsVisible="{Binding HasBrowserUrl}" />
-                    <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
-                    <Button Text="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" />
-                    <Button Text="Use an API key instead" Command="{Binding ToggleApiKeyCommand}"
-                            BackgroundColor="Transparent" TextColor="#687285" IsVisible="{Binding NeedsLogin}" />
+             xmlns:client="clr-namespace:VibeRe.Runtime;assembly=VibeRe.Runtime"
+             x:Class="VibeRe.Mobile.MainPage" x:DataType="client:ConnectionSettingsViewModel" Title="VibeRe"
+             BackgroundColor="#101010" Shell.NavBarIsVisible="False">
+    <ContentPage.Resources>
+        <Style TargetType="Button">
+            <Setter Property="BackgroundColor" Value="#242424" />
+            <Setter Property="TextColor" Value="#F5F5F5" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+    </ContentPage.Resources>
+    <Grid Padding="24" RowDefinitions="Auto,*" RowSpacing="24">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" MaximumWidthRequest="480" HorizontalOptions="Fill">
+            <Picker Title="Choose a server" ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
+                    IsEnabled="{Binding CanEdit}" TextColor="#F5F5F5" TitleColor="#AAAAAA" SemanticProperties.Description="Server" />
+            <Button Grid.Column="1" Text="Manage servers" Command="{Binding ToggleServerSettingsCommand}"
+                    BackgroundColor="Transparent" TextColor="#AAAAAA" FontSize="12" />
+        </Grid>
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Spacing="16" MaximumWidthRequest="480" HorizontalOptions="Fill" VerticalOptions="Center">
+                <Button Text="Login" ImageSource="mistral.png" ContentLayout="Top,16"
+                        Command="{Binding LoginBrowserCommand}" IsVisible="{Binding NeedsLogin}"
+                        WidthRequest="144" HeightRequest="144" HorizontalOptions="Center"
+                        BackgroundColor="#1C1C1C" BorderColor="#383838" BorderWidth="1" FontSize="16"
+                        SemanticProperties.Description="Login to Mistral" />
+                <Label Text="{Binding Status}" TextColor="#AAAAAA" HorizontalTextAlignment="Center" />
+                <Button Text="Log out" Command="{Binding LogoutCommand}" IsVisible="{Binding IsSignedIn}" HorizontalOptions="Center" />
+                <Editor Text="{Binding BrowserUrl}" IsReadOnly="True" AutoSize="TextChanges" IsVisible="{Binding HasBrowserUrl}" TextColor="#F5F5F5" />
+                <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="#AAAAAA" />
+                <Button Text="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" HorizontalOptions="Center" />
+                <VerticalStackLayout IsVisible="{Binding ShowServerSettings}" Spacing="12" Margin="0,16,0,0">
+                    <Label Text="Server settings" FontAttributes="Bold" TextColor="#F5F5F5" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Require a server at startup" TextColor="#F5F5F5" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding ServerRequired}" IsEnabled="{Binding CanEdit}" />
+                    </Grid>
+                    <Button Text="Refresh connection" Command="{Binding RefreshCommand}" />
+                    <Button Text="Remove Mistral login" Command="{Binding LogoutCommand}" />
+                    <Entry Text="{Binding ServerAddress}" Placeholder="Server URL" IsEnabled="{Binding CanEdit}" TextColor="#F5F5F5" />
+                    <Button Text="Save address" Command="{Binding SaveAddressCommand}" />
+                    <Entry Text="{Binding ServerToken}" IsPassword="True" Placeholder="Server access token" IsEnabled="{Binding CanEdit}" TextColor="#F5F5F5" />
+                    <Button Text="Save token" Command="{Binding SaveTokenCommand}" />
+                    <Label Text="Saving an empty token clears it. Changing the address clears its saved token." FontSize="12" TextColor="#AAAAAA" />
+                    <Button Text="Remove server" Command="{Binding RemoveServerCommand}" />
+                    <Label Text="Add a server" FontAttributes="Bold" TextColor="#F5F5F5" />
+                    <Entry Text="{Binding NewServerName}" Placeholder="Name" IsEnabled="{Binding CanEdit}" TextColor="#F5F5F5" />
+                    <Entry Text="{Binding NewServerAddress}" Placeholder="https://vibe.example.com" IsEnabled="{Binding CanEdit}" TextColor="#F5F5F5" />
+                    <Button Text="Add server" Command="{Binding AddServerCommand}" />
+                    <Button Text="Use an API key instead" Command="{Binding ToggleApiKeyCommand}" IsVisible="{Binding NeedsLogin}" />
                     <VerticalStackLayout IsVisible="{Binding ShowApiKey}" Spacing="10">
-                        <Entry Text="{Binding ApiKey}" IsPassword="True" Placeholder="Mistral API key" IsEnabled="{Binding CanEdit}" />
+                        <Entry Text="{Binding ApiKey}" IsPassword="True" Placeholder="Mistral API key" IsEnabled="{Binding CanEdit}" TextColor="#F5F5F5" />
                         <Button Text="Log in with key" Command="{Binding LoginApiKeyCommand}" />
                     </VerticalStackLayout>
-                    <Button Text="Log out" Command="{Binding LogoutCommand}" IsVisible="{Binding IsSignedIn}" />
                 </VerticalStackLayout>
-            </Border>
-            <VerticalStackLayout IsVisible="{Binding ShowServerSettings}" Spacing="14">
-                <Button Text="Refresh connection" Command="{Binding RefreshCommand}" />
-                <Button Text="Remove Mistral login" Command="{Binding LogoutCommand}" />
-                <Entry Text="{Binding ServerAddress}" Placeholder="Server URL" IsEnabled="{Binding CanEdit}" />
-                <Button Text="Save address" Command="{Binding SaveAddressCommand}" />
-                <Entry Text="{Binding ServerToken}" IsPassword="True" Placeholder="Server access token"
-                       IsEnabled="{Binding CanEdit}" />
-                <Button Text="Save token" Command="{Binding SaveTokenCommand}" />
-                <Label Text="Saving an empty token clears it. Changing the address clears its saved token." FontSize="12" />
-                <Button Text="Remove server" Command="{Binding RemoveServerCommand}" />
-                <Label Text="Add a server" FontSize="22" FontAttributes="Bold" />
-                <Entry Text="{Binding NewServerName}" Placeholder="Name" IsEnabled="{Binding CanEdit}" />
-                <Entry Text="{Binding NewServerAddress}" Placeholder="https://vibe.example.com" IsEnabled="{Binding CanEdit}" />
-                <Button Text="Add server" Command="{Binding AddServerCommand}" />
             </VerticalStackLayout>
-        </VerticalStackLayout>
-    </ScrollView>
+        </ScrollView>
+    </Grid>
 </ContentPage>

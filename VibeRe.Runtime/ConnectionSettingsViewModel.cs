@@ -2,28 +2,26 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Grpc.Core;
-using VibeRe.Client.Configuration;
+using VibeRe.Runtime.Configuration;
 using VibeRe.Protocol;
 
-namespace VibeRe.Client;
+namespace VibeRe.Runtime;
 
 // Shared UI behavior for desktop and mobile; platform code only supplies storage and a browser opener.
 public partial class ConnectionSettingsViewModel(
     IServerConnectionManager connections,
     IServerConnector connector,
-    LocalServerMonitor monitor,
+    ClientStartup startup,
     IBrowserLauncher browser) : ObservableObject
 {
     private bool _applying;
-    private bool _syncingLaunchOption;
     private CancellationTokenSource? _operation;
-    private CancellationTokenSource? _monitor;
     public ObservableCollection<ServerConnection> Servers { get; } = [];
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RemoveServerCommand), nameof(SaveAddressCommand), nameof(SaveTokenCommand),
         nameof(RefreshCommand), nameof(LoginApiKeyCommand), nameof(LoginBrowserCommand), nameof(LogoutCommand))]
-    [NotifyPropertyChangedFor(nameof(CanStartLocally), nameof(LoginDescription))]
+    [NotifyPropertyChangedFor(nameof(CanStartLocally))]
     private ServerConnection? _selectedServer;
 
     [ObservableProperty] private string _newServerName = "";
@@ -36,12 +34,11 @@ public partial class ConnectionSettingsViewModel(
     [NotifyPropertyChangedFor(nameof(HasBrowserUrl))]
     private string _browserUrl = "";
     [ObservableProperty] private bool _needsLogin;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LoginTitle))]
-    private bool _isSignedIn;
+    [ObservableProperty] private bool _isSignedIn;
     [ObservableProperty] private bool _showApiKey;
     [ObservableProperty] private bool _showServerSettings;
     [ObservableProperty] private bool _startLocalServer;
+    [ObservableProperty] private bool _serverRequired = true;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AddServerCommand), nameof(RemoveServerCommand), nameof(SaveAddressCommand),
@@ -50,41 +47,14 @@ public partial class ConnectionSettingsViewModel(
     private bool _isBusy;
 
     public bool CanEdit => !IsBusy;
-    public string LoginTitle => IsSignedIn ? "You're connected" : "Connect to Mistral";
-    public string LoginDescription => SelectedServer is { } server
-        ? $"Log in to Mistral on {server.Name}. Your login stays on that server."
-        : "Choose a server to log in to Mistral.";
     public bool HasBrowserUrl => BrowserUrl.Length != 0;
     public bool CanStartLocally => SelectedServer is { } server && new Uri(server.Address).IsLoopback &&
         !OperatingSystem.IsAndroid() && !OperatingSystem.IsIOS();
     private bool CanConnect() => !IsBusy && SelectedServer is not null;
-    private bool CanAdd() => !IsBusy;
 
-    public Task InitializeAsync() => RunAsync(async ct =>
-    {
-        Apply(await connections.LoadAsync(ct));
-        await RefreshCoreAsync(ct);
-    });
+    public Task InitializeAsync() => UpdateAsync(connections.LoadAsync);
 
-    public void StartMonitoring()
-    {
-        if (_monitor is not null) return;
-        _monitor = new();
-        _ = monitor.RunAsync(() => IsBusy ? null : SelectedServer,
-            token => RunAsync(async ct =>
-            {
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
-                await RefreshCoreAsync(linked.Token);
-            }), _monitor.Token);
-    }
-
-    public void StopMonitoring()
-    {
-        _monitor?.Cancel();
-        _monitor?.Dispose();
-        _monitor = null;
-        _operation?.Cancel();
-    }
+    public void CancelPending() => _operation?.Cancel();
 
     partial void OnSelectedServerChanged(ServerConnection? value)
     {
@@ -95,96 +65,85 @@ public partial class ConnectionSettingsViewModel(
         NeedsLogin = false;
         IsSignedIn = false;
         ShowApiKey = false;
-        _syncingLaunchOption = true;
         StartLocalServer = value?.StartLocally ?? false;
-        _syncingLaunchOption = false;
-        if (!_applying && value is not null)
-            _ = RunAsync(async ct =>
-            {
-                await connections.SelectAsync(value.Name, ct);
-                await RefreshCoreAsync(ct);
-            });
-    }
-
-    partial void OnStartLocalServerChanged(bool value)
-    {
-        if (_syncingLaunchOption || _applying || SelectedServer is null) return;
+        if (_applying) return;
+        if (value is null) { CancelPending(); Status = "Select a server to connect."; return; }
         _ = RunAsync(async ct =>
         {
-            Apply(await connections.SetLocalStartupAsync(SelectedServer.Name, value, ct));
+            await connections.SelectAsync(value.Name, ct);
             await RefreshCoreAsync(ct);
         });
     }
 
-    [RelayCommand(CanExecute = nameof(CanAdd))]
-    private Task AddServerAsync() => RunAsync(async ct =>
+    partial void OnStartLocalServerChanged(bool value)
     {
-        await connections.AddAsync(NewServerName, NewServerAddress, ct);
-        Apply(await connections.SelectAsync(NewServerName.Trim(), ct));
+        if (_applying || SelectedServer is null || SelectedServer.StartLocally == value) return;
+        _ = UpdateAsync(ct => connections.SetLocalStartupAsync(SelectedServer.Name, value, ct));
+    }
+
+    partial void OnServerRequiredChanged(bool value)
+    {
+        if (_applying) return;
+        _ = UpdateAsync(ct => connections.SetServerRequiredAsync(value, ct));
+    }
+
+    [RelayCommand(CanExecute = nameof(CanEdit))]
+    private Task AddServerAsync() => UpdateAsync(async ct =>
+    {
+        var name = NewServerName.Trim();
+        await connections.AddAsync(name, NewServerAddress, ct);
+        var configuration = await connections.SelectAsync(name, ct);
+        ct.ThrowIfCancellationRequested();
         NewServerName = "";
         NewServerAddress = "https://";
-        await RefreshCoreAsync(ct);
+        return configuration;
     });
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
-    private Task RemoveServerAsync() => RunAsync(async ct =>
-    {
-        Apply(await connections.RemoveAsync(SelectedServer!.Name, ct));
-        await RefreshCoreAsync(ct);
-    });
+    private Task RemoveServerAsync() => UpdateAsync(ct => connections.RemoveAsync(SelectedServer!.Name, ct));
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
-    private Task SaveAddressAsync() => RunAsync(async ct =>
-    {
-        Apply(await connections.UpdateAddressAsync(SelectedServer!.Name, ServerAddress, ct));
-        await RefreshCoreAsync(ct);
-    });
+    private Task SaveAddressAsync() => UpdateAsync(ct => connections.UpdateAddressAsync(SelectedServer!.Name, ServerAddress, ct));
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
-    private Task SaveTokenAsync() => RunAsync(async ct =>
+    private Task SaveTokenAsync()
     {
         var token = ServerToken;
         ServerToken = "";
-        Apply(await connections.SetTokenAsync(SelectedServer!.Name, token, ct));
-        await RefreshCoreAsync(ct);
-    });
+        return UpdateAsync(ct => connections.SetTokenAsync(SelectedServer!.Name, token, ct));
+    }
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
-    private Task RefreshAsync() => RunAsync(RefreshCoreAsync);
+    private Task RefreshAsync() => RunAsync(ct => WithClientAsync((client, token) => client.GetStatusAsync(token), ct));
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private Task LoginApiKeyAsync() => RunAsync(async ct =>
     {
         var key = ApiKey;
         ApiKey = "";
-        using var client = await connector.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
-        var result = await client.LoginAsync(key, ct);
-        ApplyStatus(client.Server.Name, result);
+        await WithClientAsync((client, token) => client.LoginAsync(key, token), ct);
     });
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private Task LoginBrowserAsync() => RunAsync(async ct =>
     {
-        using var client = await connector.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
-        var result = await client.LoginWithBrowserAsync(async attempt =>
+        using var session = await connector.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
+        var result = await session.Client.LoginWithBrowserAsync(async attempt =>
         {
+            ct.ThrowIfCancellationRequested();
             BrowserUrl = attempt.SignInUrl;
-            Status = $"Log in to Mistral in your browser to authorize {client.Server.Name}. You can also open the URL below.";
+            Status = $"Log in to Mistral in your browser to authorize {session.Server.Name}. You can also open the URL below.";
             try { await browser.OpenAsync(new Uri(attempt.SignInUrl)); }
             catch { /* The visible URL allows manual browser login; continue polling. */ }
         }, ct);
+        ct.ThrowIfCancellationRequested();
         BrowserUrl = "";
-        Status = $"{client.Server.Name}: {result.Message}";
-        if (result.AuthStatus is { } status) ApplyStatus(client.Server.Name, status);
+        Status = $"{session.Server.Name}: {result.Message}";
+        if (result.AuthStatus is { } status) ApplyStatus(session.Server.Name, status);
     });
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
-    private Task LogoutAsync() => RunAsync(async ct =>
-    {
-        using var client = await connector.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
-        var result = await client.LogoutAsync(ct);
-        ApplyStatus(client.Server.Name, result);
-    });
+    private Task LogoutAsync() => RunAsync(ct => WithClientAsync((client, token) => client.LogoutAsync(token), ct));
 
     [RelayCommand]
     private void Cancel() => _operation?.Cancel();
@@ -201,9 +160,25 @@ public partial class ConnectionSettingsViewModel(
         IsSignedIn = false;
         if (SelectedServer is null) { Status = "Add a server to connect."; return; }
         Status = $"Connecting to {SelectedServer.Name}…";
-        using var client = await connector.ConnectAsync(SelectedServer.Name, cancellationToken: ct);
-        var result = await client.GetStatusAsync(ct);
-        ApplyStatus(client.Server.Name, result);
+        using var session = await startup.StartAsync(SelectedServer.Name, cancellationToken: ct);
+        ct.ThrowIfCancellationRequested();
+        if (session is null)
+        {
+            NeedsLogin = true;
+            Status = "Server is optional. Log in or refresh to connect.";
+            return;
+        }
+        ApplyStatus(session.Server.Name, session.Status!);
+    }
+
+    private async Task WithClientAsync(Func<IVibeReClient, CancellationToken, Task<AuthStatusReply>> action, CancellationToken ct)
+    {
+        NeedsLogin = false;
+        IsSignedIn = false;
+        using var session = await connector.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
+        var status = await action(session.Client, ct);
+        ct.ThrowIfCancellationRequested();
+        ApplyStatus(session.Server.Name, status);
     }
 
     private void ApplyStatus(string serverName, AuthStatusReply status)
@@ -219,6 +194,7 @@ public partial class ConnectionSettingsViewModel(
         _applying = true;
         try
         {
+            ServerRequired = config.ServerRequired;
             Servers.Clear();
             foreach (var server in config.Servers) Servers.Add(server);
             SelectedServer = config.ActiveServer is null ? null : config.Find();
@@ -226,20 +202,36 @@ public partial class ConnectionSettingsViewModel(
         finally { _applying = false; }
     }
 
+    private Task UpdateAsync(Func<CancellationToken, Task<ClientConfiguration>> update) => RunAsync(async ct =>
+    {
+        var configuration = await update(ct);
+        ct.ThrowIfCancellationRequested();
+        Apply(configuration);
+        await RefreshCoreAsync(ct);
+    });
+
     private async Task RunAsync(Func<CancellationToken, Task> action)
     {
-        if (IsBusy) return;
+        _operation?.Cancel();
         using var operation = new CancellationTokenSource();
         _operation = operation;
         IsBusy = true;
         try { await action(operation.Token); }
-        catch (OperationCanceledException) { Status = "Canceled."; }
-        catch (RpcException e) { Status = e.StatusCode == StatusCode.Unavailable
-            ? "Could not connect to this server. Check its address and whether it is running."
-            : e.Status.Detail; }
-        catch (ArgumentException e) { Status = e.Message; }
-        catch (LocalServerStartupException e) { Status = e.Message; }
-        catch { Status = "Could not access saved server settings or credential storage."; }
-        finally { BrowserUrl = ""; _operation = null; IsBusy = false; }
+        catch (Exception e)
+        {
+            if (_operation == operation) Status = e switch
+            {
+                OperationCanceledException => "Canceled.",
+                RpcException { StatusCode: StatusCode.Cancelled } when operation.IsCancellationRequested => "Canceled.",
+                RpcException { StatusCode: StatusCode.Unavailable } => "Could not connect to this server. Check its address and whether it is running.",
+                RpcException rpc => rpc.Status.Detail,
+                ArgumentException or LocalServerStartupException or InvalidOperationException => e.Message,
+                _ => "Could not access saved server settings or credential storage."
+            };
+        }
+        finally
+        {
+            if (_operation == operation) { BrowserUrl = ""; _operation = null; IsBusy = false; }
+        }
     }
 }

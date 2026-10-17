@@ -1,4 +1,4 @@
-namespace VibeRe.Client.Configuration;
+namespace VibeRe.Runtime.Configuration;
 
 public sealed class ServerConnectionManager(IClientConfigurationStore configurations, IServerTokenStore tokens)
     : IServerConnectionManager
@@ -8,7 +8,7 @@ public sealed class ServerConnectionManager(IClientConfigurationStore configurat
     public Task<ClientConfiguration> AddAsync(string name, string address, CancellationToken cancellationToken = default, bool startLocally = false)
     {
         name = ServerConnection.ValidateName(name);
-        address = ServerConnection.NormalizeAddress(address);
+        address = ServerAddress.Normalize(address);
         if (startLocally && !new Uri(address).IsLoopback) throw new ArgumentException("Only loopback servers can be started locally.");
         return configurations.UpdateAsync(config =>
         {
@@ -41,7 +41,7 @@ public sealed class ServerConnectionManager(IClientConfigurationStore configurat
 
     public Task<ClientConfiguration> UpdateAddressAsync(string name, string address, CancellationToken cancellationToken = default)
     {
-        address = ServerConnection.NormalizeAddress(address);
+        address = ServerAddress.Normalize(address);
         return configurations.UpdateAsync(async config =>
         {
             var server = config.Find(name);
@@ -53,6 +53,9 @@ public sealed class ServerConnectionManager(IClientConfigurationStore configurat
                     StartLocally = x.StartLocally && new Uri(address).IsLoopback } : x).ToList() };
         }, cancellationToken);
     }
+
+    public Task<ClientConfiguration> SetServerRequiredAsync(bool required, CancellationToken cancellationToken = default) =>
+        configurations.UpdateAsync(config => Task.FromResult(config with { ServerRequired = required }), cancellationToken);
 
     public Task<ClientConfiguration> SetLocalStartupAsync(string name, bool enabled, CancellationToken cancellationToken = default) =>
         configurations.UpdateAsync(config =>

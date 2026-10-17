@@ -1,55 +1,43 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:client="using:VibeRe.Client"
+        xmlns:client="using:VibeRe.Runtime"
         x:Class="VibeRe.Desktop.Views.MainWindow" x:DataType="client:ConnectionSettingsViewModel"
         Title="VibeRe" Width="720" Height="680" MinWidth="520" MinHeight="480"
-        Background="#F6F7F9" Foreground="#172033" RequestedThemeVariant="Light">
-    <ScrollViewer>
-        <StackPanel Margin="36,52" Spacing="24" MaxWidth="480" HorizontalAlignment="Center">
-            <StackPanel Spacing="8">
-                <TextBlock Text="VibeRe" FontSize="32" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                <TextBlock Text="Your workspace, connected." Foreground="#687285" HorizontalAlignment="Center" />
-            </StackPanel>
-            <StackPanel Spacing="8">
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Text="Server" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" Content="Manage servers" Command="{Binding ToggleServerSettingsCommand}"
-                            Background="Transparent" BorderThickness="0" Foreground="#687285" FontSize="12" />
-                </Grid>
-                <ComboBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
-                          IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch" PlaceholderText="Choose a server" />
-            </StackPanel>
-            <Border Background="White" BorderBrush="#E2E6ED" BorderThickness="1" Padding="32" CornerRadius="16">
-                <StackPanel Spacing="20">
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="{Binding LoginTitle}" FontSize="24" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding Status}" Foreground="#687285" TextWrapping="Wrap" />
+        Background="#101010" Foreground="#F5F5F5" RequestedThemeVariant="Dark">
+    <Grid RowDefinitions="Auto,*" Margin="24" RowSpacing="24">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" MaxWidth="480" HorizontalAlignment="Stretch">
+            <ComboBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
+                      IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch"
+                      PlaceholderText="Choose a server" AutomationProperties.Name="Server" />
+            <Button Grid.Column="1" Content="Manage servers" Command="{Binding ToggleServerSettingsCommand}"
+                    Background="Transparent" BorderThickness="0" Foreground="#AAAAAA" />
+        </Grid>
+        <ScrollViewer Grid.Row="1" VerticalAlignment="Center">
+            <StackPanel Spacing="16" MaxWidth="480" HorizontalAlignment="Stretch">
+                <Button Command="{Binding LoginBrowserCommand}" IsVisible="{Binding NeedsLogin}"
+                        Width="144" Height="144" HorizontalAlignment="Center"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Background="#1C1C1C" BorderBrush="#383838" BorderThickness="1" CornerRadius="0"
+                        AutomationProperties.Name="Login to Mistral">
+                    <StackPanel Spacing="16">
+                        <Canvas Width="70" Height="50" HorizontalAlignment="Center" IsHitTestVisible="False">
+                            <Path Fill="#FFD700" Data="M10,0 H20 V10 H10 Z M50,0 H60 V10 H50 Z" />
+                            <Path Fill="#FFAF00" Data="M10,10 H30 V20 H10 Z M40,10 H60 V20 H40 Z" />
+                            <Path Fill="#FF8205" Data="M10,20 H60 V30 H10 Z" />
+                            <Path Fill="#FA500F" Data="M10,30 H20 V40 H10 Z M30,30 H40 V40 H30 Z M50,30 H60 V40 H50 Z" />
+                            <Path Fill="#E10500" Data="M0,40 H30 V50 H0 Z M40,40 H70 V50 H40 Z" />
+                        </Canvas>
+                        <TextBlock Text="Login" FontSize="16" HorizontalAlignment="Center" />
                     </StackPanel>
-                    <TextBlock Text="{Binding LoginDescription}"
-                               IsVisible="{Binding NeedsLogin}" TextWrapping="Wrap" Foreground="#687285" />
-                    <Button Content="Log in to Mistral" Command="{Binding LoginBrowserCommand}"
-                            IsVisible="{Binding NeedsLogin}" HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Center" Padding="20,14" Background="#315CF5"
-                            Foreground="White" BorderThickness="0" CornerRadius="8" FontWeight="SemiBold" />
-                    <Button Content="Use an API key instead" Command="{Binding ToggleApiKeyCommand}"
-                            Background="Transparent" BorderThickness="0" Foreground="#687285"
-                            HorizontalAlignment="Center" IsVisible="{Binding NeedsLogin}" />
-                    <Button Content="Log out" Command="{Binding LogoutCommand}" IsVisible="{Binding IsSignedIn}" />
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" IsVisible="{Binding ShowApiKey}">
-                        <TextBox Text="{Binding ApiKey}" PasswordChar="●" PlaceholderText="Mistral API key"
-                                 IsEnabled="{Binding CanEdit}" />
-                        <Button Grid.Column="1" Content="Log in with key" Command="{Binding LoginApiKeyCommand}" />
-                    </Grid>
-                    <TextBox Text="{Binding BrowserUrl}" IsReadOnly="True" TextWrapping="Wrap"
-                             IsVisible="{Binding HasBrowserUrl}" />
-                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3" />
-                    <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" />
-                </StackPanel>
-            </Border>
-            <Border IsVisible="{Binding ShowServerSettings}" Background="White" BorderBrush="#E2E6ED"
-                    BorderThickness="1" Padding="20" CornerRadius="12">
-                <StackPanel Spacing="12">
+                </Button>
+                <TextBlock Text="{Binding Status}" Foreground="#AAAAAA" TextWrapping="Wrap" TextAlignment="Center" />
+                <Button Content="Log out" Command="{Binding LogoutCommand}" IsVisible="{Binding IsSignedIn}" HorizontalAlignment="Center" />
+                <TextBox Text="{Binding BrowserUrl}" IsReadOnly="True" TextWrapping="Wrap" IsVisible="{Binding HasBrowserUrl}" />
+                <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3" />
+                <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" HorizontalAlignment="Center" />
+                <StackPanel IsVisible="{Binding ShowServerSettings}" Spacing="12" Margin="0,16,0,0">
                     <TextBlock Text="Server settings" FontWeight="SemiBold" />
+                    <CheckBox Content="Require a server at startup" IsChecked="{Binding ServerRequired}" IsEnabled="{Binding CanEdit}" />
                     <Button Content="Refresh connection" Command="{Binding RefreshCommand}" />
                     <Button Content="Remove Mistral login" Command="{Binding LogoutCommand}" />
                     <CheckBox Content="Start this server locally when needed" IsChecked="{Binding StartLocalServer}"
@@ -60,21 +48,23 @@
                         <Button Grid.Column="2" Content="Remove" Command="{Binding RemoveServerCommand}" />
                     </Grid>
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                        <TextBox Text="{Binding ServerToken}" PasswordChar="●" PlaceholderText="Server access token"
-                                 IsEnabled="{Binding CanEdit}" />
+                        <TextBox Text="{Binding ServerToken}" PasswordChar="●" PlaceholderText="Server access token" IsEnabled="{Binding CanEdit}" />
                         <Button Grid.Column="1" Content="Save token" Command="{Binding SaveTokenCommand}" />
                     </Grid>
-                    <TextBlock Text="Saving an empty token clears it. Changing the address clears its saved token."
-                               TextWrapping="Wrap" FontSize="12" />
+                    <TextBlock Text="Saving an empty token clears it. Changing the address clears its saved token." TextWrapping="Wrap" FontSize="12" />
                     <TextBlock Text="Add a server" FontWeight="SemiBold" />
                     <Grid ColumnDefinitions="140,*,Auto" ColumnSpacing="10">
                         <TextBox Text="{Binding NewServerName}" PlaceholderText="Name" IsEnabled="{Binding CanEdit}" />
-                        <TextBox Grid.Column="1" Text="{Binding NewServerAddress}" PlaceholderText="https://vibe.example.com"
-                                 IsEnabled="{Binding CanEdit}" />
+                        <TextBox Grid.Column="1" Text="{Binding NewServerAddress}" PlaceholderText="https://vibe.example.com" IsEnabled="{Binding CanEdit}" />
                         <Button Grid.Column="2" Content="Add" Command="{Binding AddServerCommand}" />
                     </Grid>
+                    <Button Content="Use an API key instead" Command="{Binding ToggleApiKeyCommand}" IsVisible="{Binding NeedsLogin}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" IsVisible="{Binding ShowApiKey}">
+                        <TextBox Text="{Binding ApiKey}" PasswordChar="●" PlaceholderText="Mistral API key" IsEnabled="{Binding CanEdit}" />
+                        <Button Grid.Column="1" Content="Log in with key" Command="{Binding LoginApiKeyCommand}" />
+                    </Grid>
                 </StackPanel>
-            </Border>
-        </StackPanel>
-    </ScrollViewer>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
 </Window>

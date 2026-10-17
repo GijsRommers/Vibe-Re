@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 
-namespace VibeRe.Client.Configuration;
+namespace VibeRe.Runtime.Adapters;
 
 public sealed class ServerReadinessProbe : IServerReadinessProbe
 {

@@ -1,9 +1,11 @@
+using VibeRe.Runtime.Adapters;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
 using VibeRe.Client;
-using VibeRe.Client.Configuration;
+using VibeRe.Runtime;
+using VibeRe.Runtime.Configuration;
 using VibeRe.Desktop.Views;
 
 namespace VibeRe.Desktop;
@@ -19,7 +21,7 @@ public class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var services = new ServiceCollection().AddVibeReClient(ClientConnectionDatabase.DesktopPath)
+            var services = new ServiceCollection().AddVibeReRuntime(ClientConnectionDatabase.DesktopPath)
                 .BuildServiceProvider();
             desktop.Exit += (_, _) => services.Dispose();
             desktop.MainWindow = new MainWindow

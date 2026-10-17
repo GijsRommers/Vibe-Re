@@ -1,4 +1,4 @@
-namespace VibeRe.Client;
+namespace VibeRe.Runtime;
 
 public interface IBrowserLauncher
 {

@@ -1,10 +1,11 @@
 using VibeRe.Client;
-using VibeRe.Client.Configuration;
+using VibeRe.Runtime;
+using VibeRe.Runtime.Configuration;
 using VibeRe.Protocol;
 
 namespace VibeRe.Cli;
 
-public sealed class AuthCommands(IServerConnector connector, IBrowserLauncher browser)
+public sealed class AuthCommands(IServerConnector connector, ClientStartup startup, IBrowserLauncher browser)
 {
     public async Task<int> ExecuteAsync(CliOptions options, CancellationToken cancellationToken)
     {
@@ -23,37 +24,48 @@ public sealed class AuthCommands(IServerConnector connector, IBrowserLauncher br
         if (options.ApiKeyFromStdin && options.Method == "browser")
             throw new ArgumentException("--api-key-stdin requires API-key login.");
 
-        using var client = await connector.ConnectAsync(options.Server,
-            Environment.GetEnvironmentVariable("VIBE_RE_SERVER_TOKEN"), cancellationToken);
-        Console.WriteLine($"Server: {client.Server.Name} ({client.Server.Address})");
-        if (verb == "logout") { PrintStatus(await client.LogoutAsync(cancellationToken)); return 0; }
-        if (verb == "login") return await LoginAsync(client,
+        var token = Environment.GetEnvironmentVariable("VIBE_RE_SERVER_TOKEN");
+        if (options.IsLaunch)
+        {
+            using var launch = await startup.StartAsync(options.Server, token, cancellationToken);
+            if (launch is null) { Console.WriteLine("Server is optional. Use auth login to connect."); return 0; }
+            PrintServer(launch);
+            PrintStatus(launch.Status!);
+            if (VibeReClient.NeedsLogin(launch.Status!)) Console.WriteLine("Not logged in.");
+            return VibeReClient.NeedsLogin(launch.Status!)
+                ? await LoginAsync(launch, "browser", false, cancellationToken)
+                : ExitCode(launch.Status!);
+        }
+
+        using var session = await connector.ConnectAsync(options.Server, token, cancellationToken);
+        PrintServer(session);
+        if (verb == "login") return await LoginAsync(session,
             options.ApiKeyFromStdin ? "api-key" : options.Method ?? "browser", options.ApiKeyFromStdin, cancellationToken);
-
-        var status = await client.GetStatusAsync(cancellationToken);
+        var status = verb == "logout" ? await session.Client.LogoutAsync(cancellationToken) : await session.Client.GetStatusAsync(cancellationToken);
         PrintStatus(status);
-        if (!VibeReClient.NeedsLogin(status)) return status.State == AuthState.Authenticated ? 0 : 1;
-
-        Console.WriteLine("Log in to Mistral to get started.");
-        if (options.IsLaunch) return await LoginAsync(client, "browser", false, cancellationToken);
-        Console.WriteLine($"Run: vibe-re --server {client.Server.Name} auth login");
-        return 1;
+        if (verb == "logout") return 0;
+        if (VibeReClient.NeedsLogin(status)) Console.WriteLine($"Run: vibe-re --server {session.Server.Name} auth login");
+        return ExitCode(status);
     }
 
-    private async Task<int> LoginAsync(IVibeReClient client, string method, bool stdin, CancellationToken ct)
+    private static int ExitCode(AuthStatusReply status) => status.State == AuthState.Authenticated ? 0 : 1;
+    private static void PrintServer(ServerSession session) => Console.WriteLine($"Server: {session.Server.Name} ({session.Server.Address})");
+
+    private async Task<int> LoginAsync(ServerSession session, string method, bool stdin, CancellationToken ct)
     {
         if (method == "api-key")
         {
             var key = stdin ? await Console.In.ReadLineAsync(ct) ?? "" :
                 Environment.GetEnvironmentVariable("MISTRAL_API_KEY") ?? ConsoleInput.ReadSecret("Mistral API key: ", ct);
-            var status = await client.LoginAsync(key, ct);
+            var status = await session.Client.LoginAsync(key, ct);
             PrintStatus(status);
-            return status.State == AuthState.Authenticated ? 0 : 1;
+            return ExitCode(status);
         }
 
-        var result = await client.LoginWithBrowserAsync(async attempt =>
+        Console.WriteLine("Starting Mistral login…");
+        var result = await session.Client.LoginWithBrowserAsync(async attempt =>
         {
-            Console.WriteLine($"Open this URL to authorize server '{client.Server.Name}':\n{attempt.SignInUrl}");
+            Console.WriteLine($"Open this URL to authorize server '{session.Server.Name}':\n{attempt.SignInUrl}");
             try { await browser.OpenAsync(new Uri(attempt.SignInUrl)); }
             catch { Console.WriteLine("Open the URL on any device. Waiting for login…"); }
         }, ct);

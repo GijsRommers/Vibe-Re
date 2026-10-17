@@ -1,9 +1,33 @@
-using VibeRe.Client.Configuration;
+using VibeRe.Runtime;
+using VibeRe.Runtime.Adapters;
+using VibeRe.Runtime.Configuration;
 
 namespace VibeRe.Client.Tests;
 
 public class ServerConnectorTests
 {
+    [Fact]
+    public async Task ExplicitOptionalConnectionDoesNotLaunchConfiguredLocalServer()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"vibere-optional-{Guid.NewGuid()}.db");
+        try
+        {
+            var store = new ClientConnectionDatabase(path);
+            var tokens = new BlockingTokens();
+            var connections = new ServerConnectionManager(store, tokens);
+            var configuration = await connections.SetServerRequiredAsync(false);
+            Assert.True(configuration.Find().StartLocally);
+
+            using ServerSession session = await new ServerConnector(store, tokens, new UnusedLauncher()).ConnectAsync();
+
+            Assert.Equal(configuration.Find(), session.Server);
+            Assert.IsType<VibeReClient>(session.Client);
+            Assert.Null(session.Status);
+            Assert.False((await store.LoadAsync()).ServerRequired);
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public async Task ConcurrentAddressChangeCannotSendReplacementTokenToOldDestination()
     {
@@ -57,6 +81,6 @@ public class ServerConnectorTests
     private sealed class UnusedLauncher : ILocalServerLauncher
     {
         public Task EnsureRunningAsync(ServerConnection server, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("A connection without a token must fail before startup.");
+            throw new InvalidOperationException("This connection must not attempt local server startup.");
     }
 }

@@ -1,4 +1,4 @@
-namespace VibeRe.Client.Configuration;
+namespace VibeRe.Runtime.Configuration;
 
 public interface IClientConfigurationStore
 {

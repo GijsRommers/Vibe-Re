@@ -1,6 +1,6 @@
 # VibeRe
 
-VibeRe runs provider authentication on the server. CLI, Avalonia desktop, and MAUI mobile use the same gRPC contract and `VibeRe.Client` library. Clients can save multiple named servers and choose an active server. Each server owns its Mistral credentials; logging in from one client is visible to other clients connected to that server.
+VibeRe runs provider authentication on the server. CLI, Avalonia desktop, and MAUI mobile use the same gRPC contract. `VibeRe.Client` is the transport-only library; `VibeRe.Runtime` shares startup, settings, and UI behavior. Clients can save multiple named servers and choose an active server. Each server owns its Mistral credentials; logging in from one client is visible to other clients connected to that server.
 
 ## Run locally
 
@@ -11,13 +11,13 @@ dotnet run --project VibeRe.Cli
 dotnet run --project VibeRe.Desktop
 ```
 
-The CLI and desktop create and select a `local` connection at `http://localhost:5067`, with automatic local startup enabled. They probe the server's HTTP/2 readiness endpoint, reuse a running VibeRe server, or start it and wait for readiness. A shared launch lock avoids duplicate startup across clients. An unrelated process on the port produces a connection error. Desktop also checks the selected managed local server periodically and restarts it after an unexpected stop.
+The CLI and desktop create and select a `local` connection at `http://localhost:5067`, with automatic local startup enabled. They probe the server's HTTP/2 readiness endpoint, reuse a running VibeRe server, or start it and wait for readiness. A shared launch lock avoids duplicate startup across clients. An unrelated process on the port produces a connection error. Use **Refresh connection** to retry after a server stops or startup is canceled.
 
 This follows [T3's local/remote connection flow](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md): local is available by default, connection settings belong to the client, and remote-only use does not depend on a local server. Select a remote connection to use it directly. Turn off **Start this server locally when needed** to manage a local server yourself; this changes future startup behavior and leaves an already running server running.
 
 Published CLI and desktop clients include their server runtime in a `server` subdirectory. In source checkouts, clients start it with `dotnet run`. They can also find `vibe-re-server` beside the client or on `PATH`; `VIBE_RE_SERVER_EXECUTABLE` overrides the executable. The local server runs independently of the client. On macOS/Linux, its startup output goes to `~/.vibe-re/server.log` (`VIBE_RE_SERVER_LOG` can override this). For foreground development, use `dotnet run --project VibeRe.Server`.
 
-When the selected server is signed out, desktop and mobile show a focused **Log in to Mistral** button. Server settings and API-key entry stay collapsed until needed. Launching the CLI without a command prints a login invitation and opens the Mistral browser link automatically. The GUI button and CLI use the same `IVibeReClient.LoginWithBrowserAsync` flow. An invalid stored key also offers login; provider outages and billing requirements show separate messages. The explicit `auth status` command reports status without opening a browser, and scripted secret input uses the stdin options below.
+When the selected server is signed out, desktop and mobile show a square Mistral **Login** button on a near-black screen. Server settings and API-key entry stay collapsed until needed. Launching the CLI without a command prints **Not logged in**, starts login, prints and opens the Mistral verification URL, then waits for the server to complete the flow. The GUI button and CLI use the same `IVibeReClient.LoginWithBrowserAsync` flow. An invalid stored key also offers login; provider outages and billing requirements show separate messages. The explicit `auth status` command reports status without opening a browser, and scripted secret input uses the stdin options below.
 
 ## Mistral login
 
@@ -51,7 +51,10 @@ dotnet run --project VibeRe.Cli -- servers token work
 dotnet run --project VibeRe.Cli -- servers use work
 dotnet run --project VibeRe.Cli -- servers list
 
-# Opt out of automatic startup, or manage another local server
+# Skip server startup and authentication checks on launch (default: on)
+dotnet run --project VibeRe.Cli -- servers required off
+
+# Opt out of local process startup, or manage another local server
 dotnet run --project VibeRe.Cli -- servers local local off
 dotnet run --project VibeRe.Cli -- servers add secondary http://localhost:5068 --local
 
@@ -66,7 +69,7 @@ dotnet run --project VibeRe.Cli -- servers remove work
 
 Desktop and mobile provide a server selector, add/remove actions, editable server address, and access-token settings. CLI and desktop share their own SQLite database at `~/.vibe-re/client.db`; `VIBE_RE_CLIENT_DATABASE` can select another database. Mobile has its own `client.db` in its app-data directory. The client database is independent of the server database and works while the local server is stopped. It is created automatically with the local server selected; there is no setup prompt. SQLite transactions serialize configuration updates across clients; malformed databases are reported without being overwritten.
 
-The client database contains names, addresses, IDs, token-presence flags, and the active server selection. Server access tokens live in the OS credential store for CLI/desktop and MAUI `SecureStorage` on mobile. Mistral API keys are stored only on the server through `ISecretStore`/Latchkey. The server database contains credential references, never the keys themselves. The server database defaults to `~/.vibe-re/vibe-re.db`; `ConnectionStrings__VibeRe` overrides its connection string. Separate server instances need separate database paths to have independent provider logins.
+The client database contains names, addresses, IDs, token-presence flags, the active server selection, and the **ServerRequired** preference (default `true`). Server access tokens live in the OS credential store for CLI/desktop and MAUI `SecureStorage` on mobile. Mistral API keys are stored only on the server through `ISecretStore`/Latchkey. The server database contains credential references, never the keys themselves. The server database defaults to `~/.vibe-re/vibe-re.db`; `ConnectionStrings__VibeRe` overrides its connection string. Separate server instances need separate database paths to have independent provider logins.
 
 `VIBE_RE_SERVER_TOKEN` overrides the selected connection's token for a CLI invocation. `MISTRAL_API_KEY` is imported only during explicit CLI API-key login; client environment variables do not silently override server credentials.
 
@@ -95,7 +98,9 @@ dotnet test VibeRe.Server.Tests
 
 The tests use fake Mistral HTTP responses, isolated SQLite databases, and fake secret stores. They cover both login methods, PKCE, expiry/cancellation, billing/rejected-key behavior, credential rollback, server access control, multiple-client visibility, independent servers, restart persistence, and concurrent client configuration updates. They do not sign in to a real Mistral account.
 
-Client services are registered through `AddVibeReClient`. Configuration storage, token storage, server connections, local process startup, readiness checks, and browser opening have explicit interfaces. The connection manager edits saved settings; the connector establishes sessions; CLI parsing, auth commands, and server commands live in separate classes. Provider credential persistence and rollback are separate from authentication policy. Changing a server address rotates its credential identifier, so concurrent clients cannot read a new destination's token using an old connection snapshot.
+CLI and GUI share `ClientStartup`: read **ServerRequired**, connect to the selected server (starting only an opted-in local profile when needed), wait for readiness, then check its authentication. Turning off **Require a server at startup** in **Manage servers**, or running `servers required off`, skips automatic connection and authentication. Explicit login/status/refresh still connects to the selected server, without starting a local process. Existing client databases migrate with this preference enabled.
+
+Runtime services are registered through `AddVibeReRuntime`. Configuration storage, token storage, server connections, local process startup, readiness checks, and browser opening have explicit interfaces. The connection manager edits saved settings; the connector opens destination-scoped clients; the startup coordinator returns an initial authenticated or signed-out session; CLI parsing, auth commands, and server commands live in separate classes. Provider credential persistence and rollback are separate from authentication policy. Changing a server address rotates its credential identifier, so concurrent clients cannot read a new destination's token using an old connection snapshot.
 
 Mobile development requires the .NET 10 SDK and matching MAUI workload. Install it with `dotnet workload install maui`, then reload the solution in the IDE. `dotnet workload list` should list `maui`. A missing platform workload can also produce `NETSDK1135` during IDE project loading because the target platform version cannot be inferred; install the workload rather than lowering the app's minimum supported OS version.
 
@@ -103,9 +108,11 @@ The mobile project targets Android on Windows/Linux and adds iOS on macOS. Build
 
 ## Configuration and settings
 
-No separate configuration project is needed. `VibeRe.Client` owns local configuration behind `IClientConfigurationStore`; `ClientConnectionDatabase` persists the typed `ClientConfiguration` in SQLite. CLI and desktop share this store, while mobile supplies its own app-data path through `AddVibeReClient`.
+`VibeRe.Client` only talks to the server: it accepts an address and access token, and exposes authentication operations. It has no configuration database, keyring, process-launching, browser, UI, or Runtime dependency.
 
-Inject `IClientConfigurationStore` to read a snapshot:
+`VibeRe.Runtime` owns the shared startup and settings orchestration. Its concrete SQLite, credential-store, process, readiness, and browser adapters are grouped under `Adapters`, behind the small IO interfaces used by the shared logic. `ClientConnectionDatabase` persists `ClientConfiguration` in SQLite. CLI and desktop reuse these adapters; mobile supplies its own browser/secure-storage implementations and app-data path through `AddVibeReRuntime`.
+
+Inject `VibeRe.Runtime.Configuration.IClientConfigurationStore` to read a snapshot:
 
 ```csharp
 var configuration = await configurations.LoadAsync(cancellationToken);

@@ -7,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using VibeRe.Application.Providers.Auth;
 using VibeRe.Application.Secrets;
 using VibeRe.Client;
-using VibeRe.Client.Configuration;
 using VibeRe.Protocol;
 
 namespace VibeRe.Server.Tests;
@@ -172,7 +171,7 @@ public class ProviderAuthIntegrationTests
         }
 
         public VibeReClient Connect(string? token = "server-token") =>
-            new(new(Guid.NewGuid(), "test", "http://localhost"), token, Server.CreateHandler());
+            new("http://localhost", token, Server.CreateHandler());
 
         protected override void Dispose(bool disposing)
         {

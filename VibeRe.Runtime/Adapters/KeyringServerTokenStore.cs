@@ -1,6 +1,6 @@
 using Latchkey;
 
-namespace VibeRe.Client.Configuration;
+namespace VibeRe.Runtime.Adapters;
 
 public sealed class KeyringServerTokenStore : IServerTokenStore
 {

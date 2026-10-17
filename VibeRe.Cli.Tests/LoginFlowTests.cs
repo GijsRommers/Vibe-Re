@@ -1,8 +1,10 @@
+using VibeRe.Runtime.Adapters;
 using Microsoft.Extensions.DependencyInjection;
 using System.ComponentModel;
 using Grpc.Core;
 using VibeRe.Client;
-using VibeRe.Client.Configuration;
+using VibeRe.Runtime;
+using VibeRe.Runtime.Configuration;
 using VibeRe.Protocol;
 
 namespace VibeRe.Cli.Tests;
@@ -21,7 +23,7 @@ public sealed class LoginFlowTests : IDisposable
     {
         var client = new ClientStub(state);
         var browser = new BrowserStub();
-        var commands = new AuthCommands(new ConnectorStub(client), browser);
+        var commands = CreateCommands(new ConnectorStub(client), browser);
         await commands.ExecuteAsync(CliOptions.Parse([]), CancellationToken.None);
         Assert.Equal(expectedLogins, client.BrowserLogins);
         Assert.Equal(expectedLogins, browser.Opened.Count);
@@ -32,7 +34,7 @@ public sealed class LoginFlowTests : IDisposable
     {
         var client = new ClientStub(AuthState.SignedOut);
         var browser = new BrowserStub();
-        var commands = new AuthCommands(new ConnectorStub(client), browser);
+        var commands = CreateCommands(new ConnectorStub(client), browser);
         Assert.Equal(1, await commands.ExecuteAsync(CliOptions.Parse(["auth", "status"]), CancellationToken.None));
         Assert.Equal(0, client.BrowserLogins);
         Assert.Empty(browser.Opened);
@@ -43,7 +45,7 @@ public sealed class LoginFlowTests : IDisposable
     {
         var client = new ClientStub(AuthState.SignedOut);
         var browser = new BrowserStub();
-        using var services = new ServiceCollection().AddVibeReClient(_database)
+        using var services = new ServiceCollection().AddVibeReRuntime(_database)
             .AddSingleton<IServerConnector>(new ConnectorStub(client))
             .AddSingleton<IBrowserLauncher>(browser)
             .BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
@@ -65,6 +67,129 @@ public sealed class LoginFlowTests : IDisposable
         Assert.False(model.HasBrowserUrl);
     }
 
+    [Fact]
+    public async Task OptionalStartupSkipsConnectionButExplicitStatusStillConnects()
+    {
+        await new ClientConnectionDatabase(_database).UpdateAsync(c => Task.FromResult(c with { ServerRequired = false }));
+        var client = new ClientStub(AuthState.SignedOut);
+        var browser = new BrowserStub();
+        var commands = CreateCommands(new ConnectorStub(client), browser);
+        Assert.Equal(0, await commands.ExecuteAsync(CliOptions.Parse([]), CancellationToken.None));
+        Assert.Equal(0, client.StatusChecks);
+        Assert.Empty(browser.Opened);
+        await commands.ExecuteAsync(CliOptions.Parse(["auth", "status"]), CancellationToken.None);
+        Assert.Equal(1, client.StatusChecks);
+    }
+
+    [Fact]
+    public async Task CliPrintsSignedOutAndVerificationUrlAndSurvivesBrowserFailure()
+    {
+        var output = new StringWriter();
+        var original = Console.Out;
+        try
+        {
+            Console.SetOut(output);
+            var commands = CreateCommands(new ConnectorStub(new ClientStub(AuthState.SignedOut)), new BrowserStub(fail: true));
+            Assert.Equal(0, await commands.ExecuteAsync(CliOptions.Parse([]), CancellationToken.None));
+        }
+        finally { Console.SetOut(original); }
+        var text = output.ToString();
+        Assert.Contains("Not logged in.", text);
+        Assert.Contains("https://console.mistral.ai/login", text);
+        Assert.Contains("Open the URL on any device", text);
+        Assert.True(text.IndexOf("Not logged in.", StringComparison.Ordinal) < text.IndexOf("Starting Mistral login", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task OptionalGuiStartupWaitsForAnExplicitConnection()
+    {
+        var connector = new SwitchingConnector();
+        using var services = CreateServices(connector);
+        await SeedServersAsync(services, connector);
+        await services.GetRequiredService<IServerConnectionManager>().SetServerRequiredAsync(false);
+        var model = services.GetRequiredService<ConnectionSettingsViewModel>();
+        await model.InitializeAsync();
+        Assert.Empty(connector.Requests);
+        Assert.False(model.ServerRequired);
+        Assert.True(model.NeedsLogin);
+        await model.RefreshCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { "local" }, connector.Requests);
+        Assert.True(model.IsSignedIn);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancelingGuiLoginClearsPendingStateAndAllowsRetry(bool rpcCancellation)
+    {
+        var connector = new SwitchingConnector();
+        using var services = CreateServices(connector);
+        await SeedServersAsync(services, connector);
+        var model = services.GetRequiredService<ConnectionSettingsViewModel>();
+        await model.InitializeAsync();
+        await SelectServerAsync(model, model.Servers.Single(x => x.Name == "work"));
+        var started = new TaskCompletionSource();
+        connector.Clients["work"].LoginWait = async ct =>
+        {
+            started.SetResult();
+            try { await Task.Delay(Timeout.Infinite, ct); }
+            catch (OperationCanceledException) when (rpcCancellation)
+            { throw new RpcException(new Status(StatusCode.Cancelled, "Canceled by caller.")); }
+        };
+        var login = model.LoginBrowserCommand.ExecuteAsync(null);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(model.HasBrowserUrl);
+        Assert.False(model.LoginBrowserCommand.CanExecute(null));
+        model.CancelPending();
+        await login.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(model.IsBusy);
+        Assert.False(model.HasBrowserUrl);
+        Assert.True(model.NeedsLogin);
+        Assert.Equal("Canceled.", model.Status);
+        connector.Clients["work"].LoginWait = null;
+        await model.LoginBrowserCommand.ExecuteAsync(null);
+        Assert.True(model.IsSignedIn);
+    }
+
+    [Fact]
+    public async Task FailedRefreshClearsThePreviousSignedInState()
+    {
+        var connector = new SwitchingConnector();
+        using var services = CreateServices(connector);
+        await SeedServersAsync(services, connector);
+        var model = services.GetRequiredService<ConnectionSettingsViewModel>();
+        await model.InitializeAsync();
+        Assert.True(model.IsSignedIn);
+        connector.Offline.Add("local");
+        await model.RefreshCommand.ExecuteAsync(null);
+        Assert.False(model.IsSignedIn);
+        Assert.False(model.NeedsLogin);
+        Assert.Contains("Could not connect", model.Status);
+    }
+
+    [Fact]
+    public async Task LateLoginFromPreviousServerCannotOverwriteNewSelection()
+    {
+        var connector = new SwitchingConnector();
+        using var services = CreateServices(connector);
+        await SeedServersAsync(services, connector);
+        var model = services.GetRequiredService<ConnectionSettingsViewModel>();
+        await model.InitializeAsync();
+        var started = new TaskCompletionSource();
+        var finish = new TaskCompletionSource();
+        connector.Clients["local"].LoginWait = _ => { started.SetResult(); return finish.Task; };
+        var login = model.LoginBrowserCommand.ExecuteAsync(null);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await SelectServerAsync(model, model.Servers.Single(x => x.Name == "work"));
+        finish.SetResult();
+        await login.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("work", model.SelectedServer!.Name);
+        Assert.Contains("work", model.Status);
+        Assert.True(model.NeedsLogin);
+        Assert.False(model.IsSignedIn);
+        Assert.False(model.HasBrowserUrl);
+    }
+
     public void Dispose() => File.Delete(_database);
 
     [Fact]
@@ -82,7 +207,7 @@ public sealed class LoginFlowTests : IDisposable
         Assert.True(model.NeedsLogin);
         Assert.False(model.IsSignedIn);
         Assert.Empty(model.ApiKey);
-        Assert.Contains("work", model.LoginDescription);
+        Assert.Contains("work", model.Status);
 
         await model.LoginBrowserCommand.ExecuteAsync(null);
         await model.LogoutCommand.ExecuteAsync(null);
@@ -118,8 +243,11 @@ public sealed class LoginFlowTests : IDisposable
         Assert.Equal("work", (await new ClientConnectionDatabase(_database).LoadAsync()).ActiveServer);
     }
 
+    private AuthCommands CreateCommands(IServerConnector connector, IBrowserLauncher browser) =>
+        new(connector, new ClientStartup(new ClientConnectionDatabase(_database), connector), browser);
+
     private ServiceProvider CreateServices(IServerConnector connector) =>
-        new ServiceCollection().AddVibeReClient(_database)
+        new ServiceCollection().AddVibeReRuntime(_database)
             .AddSingleton(connector).AddSingleton<IBrowserLauncher>(new BrowserStub())
             .BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
 
@@ -148,16 +276,16 @@ public sealed class LoginFlowTests : IDisposable
         finally { model.PropertyChanged -= onChanged; }
     }
 
-    private sealed class BrowserStub : IBrowserLauncher
+    private sealed class BrowserStub(bool fail = false) : IBrowserLauncher
     {
         public List<Uri> Opened { get; } = [];
-        public Task OpenAsync(Uri uri) { Opened.Add(uri); return Task.CompletedTask; }
+        public Task OpenAsync(Uri uri) { Opened.Add(uri); if (fail) throw new InvalidOperationException("No browser"); return Task.CompletedTask; }
     }
 
     private sealed class ConnectorStub(IVibeReClient client) : IServerConnector
     {
-        public Task<IVibeReClient> ConnectAsync(string? name = null, string? tokenOverride = null,
-            CancellationToken cancellationToken = default) => Task.FromResult(client);
+        public Task<ServerSession> ConnectAsync(string? name = null, string? tokenOverride = null,
+            CancellationToken cancellationToken = default) => Task.FromResult(new ServerSession(ClientConfiguration.Default().Find(), client));
     }
 
     private sealed class SwitchingConnector : IServerConnector
@@ -165,12 +293,12 @@ public sealed class LoginFlowTests : IDisposable
         public Dictionary<string, ClientStub> Clients { get; } = [];
         public HashSet<string> Offline { get; } = [];
         public List<string> Requests { get; } = [];
-        public Task<IVibeReClient> ConnectAsync(string? name = null, string? tokenOverride = null,
+        public Task<ServerSession> ConnectAsync(string? name = null, string? tokenOverride = null,
             CancellationToken cancellationToken = default)
         {
             Requests.Add(name!);
             if (Offline.Contains(name!)) throw new RpcException(new Status(StatusCode.Unavailable, "Offline."));
-            return Task.FromResult<IVibeReClient>(Clients[name!]);
+            return Task.FromResult(new ServerSession(Clients[name!].Server, Clients[name!]));
         }
     }
 
@@ -179,13 +307,19 @@ public sealed class LoginFlowTests : IDisposable
         public ServerConnection Server { get; } = server ?? new(Guid.NewGuid(), "local", "http://localhost:5067");
         public int BrowserLogins { get; private set; }
         public int Logouts { get; private set; }
-        public Task<AuthStatusReply> GetStatusAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new AuthStatusReply { State = state, Message = "Test account status." });
+        public int StatusChecks { get; private set; }
+        public Func<CancellationToken, Task>? LoginWait { get; set; }
+        public Task<AuthStatusReply> GetStatusAsync(CancellationToken cancellationToken = default)
+        {
+            StatusChecks++;
+            return Task.FromResult(new AuthStatusReply { State = state, Message = "Test account status." });
+        }
         public async Task<BrowserLoginReply> LoginWithBrowserAsync(Func<BrowserLoginReply, Task> showBrowser,
             CancellationToken cancellationToken = default)
         {
             BrowserLogins++;
             await showBrowser(new() { SignInUrl = "https://console.mistral.ai/login", State = BrowserLoginState.Waiting });
+            if (LoginWait is not null) await LoginWait(cancellationToken);
             state = AuthState.Authenticated;
             return new() { State = BrowserLoginState.Completed, Message = "Connected.",
                 AuthStatus = new() { State = AuthState.Authenticated, Message = "Connected." } };
@@ -197,9 +331,6 @@ public sealed class LoginFlowTests : IDisposable
             state = AuthState.SignedOut;
             return GetStatusAsync(cancellationToken);
         }
-        public Task<BrowserLoginReply> StartBrowserLoginAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<BrowserLoginReply> PollBrowserLoginAsync(string attemptId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<BrowserLoginReply> CancelBrowserLoginAsync(string attemptId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public void Dispose() { }
     }
 }

@@ -1,4 +1,4 @@
-namespace VibeRe.Client.Configuration;
+namespace VibeRe.Runtime.Configuration;
 
 public interface IServerConnectionManager
 {
@@ -7,6 +7,7 @@ public interface IServerConnectionManager
     Task<ClientConfiguration> SelectAsync(string name, CancellationToken cancellationToken = default);
     Task<ClientConfiguration> RemoveAsync(string name, CancellationToken cancellationToken = default);
     Task<ClientConfiguration> UpdateAddressAsync(string name, string address, CancellationToken cancellationToken = default);
+    Task<ClientConfiguration> SetServerRequiredAsync(bool required, CancellationToken cancellationToken = default);
     Task<ClientConfiguration> SetLocalStartupAsync(string name, bool enabled, CancellationToken cancellationToken = default);
     Task<ClientConfiguration> SetTokenAsync(string name, string token, CancellationToken cancellationToken = default);
 }

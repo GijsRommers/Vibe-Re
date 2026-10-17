@@ -1,4 +1,5 @@
 using VibeRe.Client;
+using VibeRe.Runtime;
 
 namespace VibeRe.Mobile;
 
@@ -17,12 +18,11 @@ public partial class MainPage : ContentPage
     {
         base.OnAppearing();
         await _model.InitializeAsync();
-        _model.StartMonitoring();
     }
 
     protected override void OnDisappearing()
     {
-        _model.StopMonitoring();
+        _model.CancelPending();
         base.OnDisappearing();
     }
 }

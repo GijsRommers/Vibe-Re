@@ -1,6 +1,7 @@
 using VibeRe.Client;
+using VibeRe.Runtime;
 using Microsoft.Extensions.Logging;
-using VibeRe.Client.Configuration;
+using VibeRe.Runtime.Configuration;
 
 namespace VibeRe.Mobile;
 
@@ -23,7 +24,7 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<IServerTokenStore, MobileServerTokenStore>();
         builder.Services.AddSingleton<IBrowserLauncher, MobileBrowserLauncher>();
-        builder.Services.AddVibeReClient(Path.Combine(FileSystem.AppDataDirectory, "client.db"));
+        builder.Services.AddVibeReRuntime(Path.Combine(FileSystem.AppDataDirectory, "client.db"));
         builder.Services.AddSingleton<MainPage>();
         builder.Services.AddSingleton<AppShell>();
         return builder.Build();

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace VibeRe.Client;
+namespace VibeRe.Runtime.Adapters;
 
 public sealed class SystemBrowserLauncher : IBrowserLauncher
 {

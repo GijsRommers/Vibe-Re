@@ -1,4 +1,6 @@
-using VibeRe.Client.Configuration;
+using VibeRe.Runtime;
+using VibeRe.Runtime.Adapters;
+using VibeRe.Runtime.Configuration;
 using VibeRe.Protocol;
 using Microsoft.Data.Sqlite;
 
@@ -32,6 +34,7 @@ public sealed class ServerConnectionTests : IDisposable
             await schema.ExecuteNonQueryAsync();
         }
         var config = await new ClientConnectionDatabase(ConfigPath).LoadAsync();
+        Assert.True(config.ServerRequired);
         Assert.Equal("work", config.ActiveServer);
         Assert.Equal(remoteId, config.Find().Id);
         Assert.True(config.Find().HasAccessToken);
@@ -41,10 +44,81 @@ public sealed class ServerConnectionTests : IDisposable
     }
 
     [Fact]
+    public async Task VersionTwoMigrationPreservesAllProfilesAndDefaultsToServerRequired()
+    {
+        Directory.CreateDirectory(_directory);
+        var localId = Guid.NewGuid();
+        var remoteId = Guid.NewGuid();
+        using (var db = new SqliteConnection($"Data Source={ConfigPath};Pooling=False"))
+        {
+            await db.OpenAsync();
+            using var schema = db.CreateCommand();
+            schema.CommandText = """
+                CREATE TABLE ClientServers (Id TEXT PRIMARY KEY, Name TEXT UNIQUE, Address TEXT, HasAccessToken INTEGER, StartLocally INTEGER, Position INTEGER);
+                CREATE TABLE ClientSettings (Id INTEGER PRIMARY KEY, ActiveServerId TEXT REFERENCES ClientServers(Id));
+                INSERT INTO ClientServers VALUES ($remote, 'work', 'https://work.example', 1, 0, 1);
+                INSERT INTO ClientServers VALUES ($local, 'local', 'http://localhost:5067', 1, 0, 0);
+                INSERT INTO ClientSettings VALUES (1, $remote);
+                PRAGMA user_version = 2;
+                """;
+            schema.Parameters.AddWithValue("$local", localId.ToString("D"));
+            schema.Parameters.AddWithValue("$remote", remoteId.ToString("D"));
+            await schema.ExecuteNonQueryAsync();
+        }
+        var database = new ClientConnectionDatabase(ConfigPath);
+        var config = await database.LoadAsync();
+        Assert.True(config.ServerRequired);
+        Assert.Equal("work", config.ActiveServer);
+        Assert.Equal(new[]
+        {
+            new ServerConnection(localId, "local", "http://localhost:5067", HasAccessToken: true, StartLocally: false),
+            new ServerConnection(remoteId, "work", "https://work.example", HasAccessToken: true, StartLocally: false)
+        }, config.Servers);
+        var reopened = await database.LoadAsync();
+        Assert.True(reopened.ServerRequired);
+        Assert.Equal(config.Servers, reopened.Servers);
+        using var migrated = new SqliteConnection($"Data Source={ConfigPath};Pooling=False");
+        await migrated.OpenAsync();
+        using var version = migrated.CreateCommand();
+        version.CommandText = "PRAGMA user_version;";
+        Assert.Equal(3L, await version.ExecuteScalarAsync());
+    }
+
+    [Fact]
+    public async Task ServerRequirementIsGlobalPersistentAndIndependentOfProfilesAndTokens()
+    {
+        Assert.True(new ClientConfiguration(null, []).ServerRequired);
+        var tokens = new Tokens();
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        var initial = await manager.SetTokenAsync("local", "saved-token");
+        var optional = await manager.SetServerRequiredAsync(false);
+        Assert.False(optional.ServerRequired);
+        Assert.Equal(initial.ActiveServer, optional.ActiveServer);
+        Assert.Equal(initial.Servers, optional.Servers);
+        Assert.Equal("saved-token", tokens.Values[initial.Find().Id]);
+
+        var reopened = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        Assert.False((await reopened.LoadAsync()).ServerRequired);
+        Assert.False((await reopened.AddAsync("remote", "https://remote.example")).ServerRequired);
+        Assert.False((await reopened.SelectAsync("remote")).ServerRequired);
+        Assert.False((await reopened.SetLocalStartupAsync("local", false)).ServerRequired);
+        Assert.False((await reopened.UpdateAddressAsync("remote", "https://another.example")).ServerRequired);
+        await reopened.RemoveAsync("remote");
+        var noProfiles = await reopened.RemoveAsync("local");
+        Assert.False(noProfiles.ServerRequired);
+        Assert.Null(noProfiles.ActiveServer);
+        Assert.Empty(noProfiles.Servers);
+        Assert.False((await manager.LoadAsync()).ServerRequired);
+        await reopened.SetServerRequiredAsync(true);
+        Assert.True((await manager.LoadAsync()).ServerRequired);
+    }
+
+    [Fact]
     public async Task ClientDatabaseStartsWithLocalServerAndWorksWithoutRunningServer()
     {
         var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens());
         var initial = await manager.LoadAsync();
+        Assert.True(initial.ServerRequired);
         Assert.Equal("local", initial.ActiveServer);
         Assert.Equal("http://localhost:5067", initial.Find().Address);
         Assert.True(initial.Find().StartLocally);
@@ -73,7 +147,7 @@ public sealed class ServerConnectionTests : IDisposable
         {
             await db.OpenAsync();
             using var query = db.CreateCommand();
-            query.CommandText = "PRAGMA user_version = 3;";
+            query.CommandText = "PRAGMA user_version = 4;";
             await query.ExecuteNonQueryAsync();
         }
         await Assert.ThrowsAsync<InvalidDataException>(() => database.LoadAsync());
@@ -103,9 +177,9 @@ public sealed class ServerConnectionTests : IDisposable
         var loaded = await second.LoadAsync();
         Assert.Equal(3, loaded.Servers.Count);
         Assert.Equal("work", loaded.ActiveServer);
-        using var explicitServer = await new ServerConnector(new ClientConnectionDatabase(ConfigPath), tokens,
+        using ServerSession explicitSession = await new ServerConnector(new ClientConnectionDatabase(ConfigPath), tokens,
             new LocalServerLauncher(new ServerReadinessProbe(), new LocalServerProcess())).ConnectAsync("home");
-        Assert.Equal("home", explicitServer.Server.Name);
+        Assert.Equal("home", explicitSession.Server.Name);
         Assert.Equal("work", (await first.LoadAsync()).ActiveServer);
         await second.RemoveAsync("work");
         Assert.Equal("local", (await first.LoadAsync()).ActiveServer);

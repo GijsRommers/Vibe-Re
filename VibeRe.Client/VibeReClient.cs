@@ -1,6 +1,5 @@
 using Grpc.Core;
 using Grpc.Net.Client;
-using VibeRe.Client.Configuration;
 using VibeRe.Protocol;
 
 namespace VibeRe.Client;
@@ -10,13 +9,10 @@ public sealed class VibeReClient : IVibeReClient
     private readonly GrpcChannel _channel;
     private readonly ProviderAuth.ProviderAuthClient _auth;
     private readonly Metadata _headers;
-    public ServerConnection Server { get; }
 
-    public VibeReClient(ServerConnection server, string? accessToken = null, HttpMessageHandler? httpHandler = null)
+    public VibeReClient(string address, string? accessToken = null, HttpMessageHandler? httpHandler = null)
     {
-        Server = server;
-        var address = ServerConnection.NormalizeAddress(server.Address);
-        _channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
+        _channel = GrpcChannel.ForAddress(ServerAddress.Normalize(address), new GrpcChannelOptions
         {
             HttpHandler = httpHandler ?? new SocketsHttpHandler { AllowAutoRedirect = false }
         });
@@ -62,14 +58,23 @@ public sealed class VibeReClient : IVibeReClient
                 if (result.State != BrowserLoginState.Waiting) return result;
                 await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
             }
-            await CancelBrowserLoginAsync(attempt.AttemptId, cancellationToken);
-            return new() { State = BrowserLoginState.Expired, Message = "Browser login expired. Start again." };
         }
         catch
         {
-            try { await CancelBrowserLoginAsync(attempt.AttemptId); } catch { /* Preserve the original error. */ }
+            await CleanupBrowserLoginAsync(attempt.AttemptId);
             throw;
         }
+        await CleanupBrowserLoginAsync(attempt.AttemptId);
+        cancellationToken.ThrowIfCancellationRequested();
+        return new() { State = BrowserLoginState.Expired, Message = "Browser login expired. Start again." };
+    }
+
+    private async Task CleanupBrowserLoginAsync(string attemptId)
+    {
+        // Cleanup must not make cancellation or expiry wait for the normal 45-second RPC deadline.
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try { await CancelBrowserLoginAsync(attemptId, cleanup.Token); }
+        catch { /* Preserve the original result or error, including caller cancellation. */ }
     }
 
     public static bool NeedsLogin(AuthStatusReply status) => status.State is AuthState.SignedOut or AuthState.InvalidCredential;

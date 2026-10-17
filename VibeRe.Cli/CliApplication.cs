@@ -1,5 +1,5 @@
 using Grpc.Core;
-using VibeRe.Client.Configuration;
+using VibeRe.Runtime.Configuration;
 
 namespace VibeRe.Cli;
 
@@ -19,6 +19,8 @@ public sealed class CliApplication(AuthCommands auth, ServerCommands servers)
                 : await auth.ExecuteAsync(options, cancellation.Token);
         }
         catch (OperationCanceledException) { Console.Error.WriteLine("Canceled."); return 130; }
+        catch (RpcException e) when (e.StatusCode == StatusCode.Cancelled && cancellation.IsCancellationRequested)
+        { Console.Error.WriteLine("Canceled."); return 130; }
         catch (RpcException e)
         {
             Console.Error.WriteLine(e.StatusCode == StatusCode.Unavailable
@@ -42,6 +44,7 @@ public sealed class CliApplication(AuthCommands auth, ServerCommands servers)
         vibe-re servers use NAME
         vibe-re servers remove NAME
         vibe-re servers local NAME on|off
+        vibe-re servers required on|off
         vibe-re servers token NAME [--token-stdin]
 
         Browser login is the default. API-key login reads MISTRAL_API_KEY or prompts without echo.

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace VibeRe.Client.Configuration;
+namespace VibeRe.Runtime.Adapters;
 
 public sealed class LocalServerProcess : ILocalServerProcess
 {

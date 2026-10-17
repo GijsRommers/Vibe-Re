@@ -16,7 +16,8 @@
       "VibeRe.Server\\VibeRe.Server.csproj",
       "VibeRe.Server.Tests\\VibeRe.Server.Tests.csproj",
       "VibeRe.Tools\\VibeRe.Tools.csproj",
-      "VibeRe.Tools.Tests\\VibeRe.Tools.Tests.csproj"
+      "VibeRe.Tools.Tests\\VibeRe.Tools.Tests.csproj",
+      "VibeRe.Runtime\\VibeRe.Runtime.csproj"
     ]
   }
 }
