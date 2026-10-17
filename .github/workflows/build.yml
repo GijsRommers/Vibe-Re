@@ -1,0 +1,103 @@
+name: Build, test and package
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Artifact version (for example 0.1.0-rc.1); does not publish a release'
+        default: '0.1.0-dev'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            rid: win-x64
+          - os: ubuntu-24.04
+            rid: linux-x64
+          - os: macos-15
+            rid: osx-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build and test (without MAUI workloads)
+        run: ./build/Test.ps1
+      - name: Install Linux desktop smoke prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          if ($LASTEXITCODE) { throw 'apt update failed.' }
+          sudo apt-get install -y xvfb libx11-6 libice6 libsm6 libfontconfig1
+          if ($LASTEXITCODE) { throw 'Desktop prerequisites could not be installed.' }
+      - name: Install Windows packaging compiler
+        if: runner.os == 'Windows'
+        run: |
+          $compiler = ./build/Get-InnoSetup.ps1
+          "ISCC_PATH=$compiler" >> $env:GITHUB_ENV
+      - name: Publish isolated self-contained apps and packages
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          BUILD_RID: ${{ matrix.rid }}
+        run: |
+          $version = if ($env:REQUESTED_VERSION) { $env:REQUESTED_VERSION } elseif ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { "0.1.0-ci.$env:GITHUB_RUN_NUMBER" }
+          ./build/Package.ps1 -Runtime $env:BUILD_RID -Version $version -WindowsInstaller:($IsWindows) -IsccPath $env:ISCC_PATH
+      - name: Validate relocated published apps
+        if: runner.os != 'Linux'
+        env:
+          BUILD_RID: ${{ matrix.rid }}
+        run: |
+          dotnet run --project build/SmokeTests -c Release -- --root "artifacts/stage/$env:BUILD_RID"
+          if ($LASTEXITCODE) { throw 'Published smoke tests failed.' }
+      - name: Validate relocated published apps with virtual display
+        if: runner.os == 'Linux'
+        run: |
+          xvfb-run -a dotnet run --project build/SmokeTests -c Release -- --root artifacts/stage/linux-x64
+          if ($LASTEXITCODE) { throw 'Published smoke tests failed.' }
+      - name: Validate Windows install, upgrade and uninstall
+        if: runner.os == 'Windows'
+        run: ./build/Test-Installer.ps1
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-${{ matrix.rid }}
+          path: |
+            artifacts/test-results/**/*.trx
+            artifacts/installer-logs/*.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload validated release candidates
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vibe-re-${{ matrix.rid }}
+          path: artifacts/packages/${{ matrix.rid }}/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

@@ -1,0 +1,213 @@
+using System.Diagnostics;
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Sockets;
+using System.Text.Json;
+
+// Exercise real apphosts, outside the source tree, with no provider credentials.
+if (args.Length != 2 || args[0] is not ("--root" or "--installed-root"))
+    throw new ArgumentException("Usage: --root|--installed-root <directory containing cli, desktop, server>");
+var source = Path.GetFullPath(args[1]);
+var temp = Path.Combine(Path.GetTempPath(), "VibeRe package smoke " + Guid.NewGuid().ToString("N"));
+var root = args[0] == "--installed-root" ? source : Path.Combine(temp, "installed apps");
+var cwd = Path.Combine(temp, "unrelated working directory");
+Directory.CreateDirectory(cwd);
+var suffix = OperatingSystem.IsWindows() ? ".exe" : "";
+var environment = new Dictionary<string, string?>
+{
+    ["VIBE_RE_CLIENT_DATABASE"] = Path.Combine(temp, "client.db"),
+    ["VIBE_RE_SERVER_LOG"] = Path.Combine(temp, "server.log"),
+    ["VIBE_RE_SERVER_EXECUTABLE"] = null,
+    ["VIBE_RE_SERVER_TOKEN"] = "package-smoke-token",
+    ["Server__AccessToken"] = null,
+    ["ConnectionStrings__VibeRe"] = null,
+    ["ASPNETCORE_CONTENTROOT"] = null,
+    ["ASPNETCORE_ENVIRONMENT"] = "Production",
+    ["DOTNET_ENVIRONMENT"] = "Production",
+    // Prove the published apps don't use the SDK/shared frameworks.
+    ["DOTNET_ROOT"] = Path.Combine(temp, "no-dotnet"),
+    ["DOTNET_ROOT_X64"] = Path.Combine(temp, "no-dotnet"),
+    ["DOTNET_ROOT_ARM64"] = Path.Combine(temp, "no-dotnet"),
+    ["DOTNET_MULTILEVEL_LOOKUP"] = "0"
+};
+try
+{
+    if (root != source) CopyDirectory(source, root);
+    var cli = Path.Combine(root, "cli", "vibe-re" + suffix);
+    Require(!File.Exists(Path.Combine(root, "cli", "VibeRe.Desktop.dll")), "CLI output contains desktop files");
+    Require(!File.Exists(Path.Combine(root, "server", "vibe-re.dll")), "Server output contains CLI files");
+    Require(!File.Exists(Path.Combine(root, "desktop", "vibe-re.dll")), "Desktop output contains CLI files");
+    await Run(cli, ["--help"], 0, "vibe-re");
+    await Run(cli, ["servers", "list"], 0, "local");
+
+    foreach (var app in new[] { "cli", "desktop", "server" })
+    {
+        var serverDir = app == "server" ? Path.Combine(root, app) : Path.Combine(root, app, "server");
+        Require(File.Exists(Path.Combine(serverDir, "vibe-re-server" + suffix)), $"Missing bundled server for {app}");
+        Require(File.Exists(Path.Combine(serverDir, "vibe-re-server.runtimeconfig.json")), "Missing runtime configuration");
+        var database = Path.Combine(temp, app + ".db");
+        // File-only configuration proves the server uses its own content root.
+        File.WriteAllText(Path.Combine(serverDir, "appsettings.json"), JsonSerializer.Serialize(new
+        {
+            Server = new { AccessToken = "package-smoke-token" },
+            ConnectionStrings = new { VibeRe = "Data Source=" + database }
+        }));
+        var address = FreeAddress();
+        await Run(cli, ["servers", "update", "local", address], 0, address);
+        Process? foreground = null;
+        Process? desktop = null;
+        try
+        {
+            if (app == "server")
+            {
+                // Environment settings override the shipped JSON.
+                environment["Server__AccessToken"] = "environment-smoke-token";
+                environment["VIBE_RE_SERVER_TOKEN"] = "environment-smoke-token";
+                foreground = Start(Path.Combine(serverDir, "vibe-re-server" + suffix), ["--urls", address]);
+                Drain(foreground);
+            }
+            else if (app == "desktop")
+            {
+                desktop = Start(Path.Combine(root, app, "VibeRe.Desktop" + suffix), []);
+                Drain(desktop);
+            }
+            else
+                await Run(cli, ["auth", "status"], 1, "Mistral: SignedOut");
+
+            await Ready(address);
+            Require(File.Exists(database), $"Server did not load {app}'s appsettings.json");
+            // Token-protected gRPC succeeds using the configured client token.
+            await Run(cli, ["auth", "status"], 1, "Mistral: SignedOut");
+            environment["VIBE_RE_SERVER_TOKEN"] = "incorrect-token";
+            await Run(cli, ["auth", "status"], 1, "access token for this server");
+            environment["VIBE_RE_SERVER_TOKEN"] = app == "server" ? "environment-smoke-token" : "package-smoke-token";
+            if (desktop is not null)
+            {
+                await Task.Delay(1500);
+                Require(!desktop.HasExited, "Desktop exited during startup");
+            }
+            Console.WriteLine($"PASS: {app} published startup, HTTP/2 readiness, configuration and gRPC token access");
+        }
+        finally
+        {
+            Stop(desktop);
+            Stop(foreground);
+            StopBundledServers();
+            environment["Server__AccessToken"] = null;
+            environment["VIBE_RE_SERVER_TOKEN"] = "package-smoke-token";
+        }
+    }
+}
+finally
+{
+    StopBundledServers();
+    try { Directory.Delete(temp, true); }
+    catch (IOException) { Console.WriteLine($"Smoke output retained: {temp}"); }
+}
+
+Process Start(string file, string[] arguments)
+{
+    var start = new ProcessStartInfo(file) { WorkingDirectory = cwd, UseShellExecute = false, RedirectStandardInput = true,
+        RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+    foreach (var argument in arguments) start.ArgumentList.Add(argument);
+    foreach (var item in environment)
+        if (item.Value is null) start.Environment.Remove(item.Key); else start.Environment[item.Key] = item.Value;
+    var process = Process.Start(start) ?? throw new Exception("Cannot launch " + file);
+    process.StandardInput.Close();
+    return process;
+}
+
+async Task Run(string file, string[] arguments, int exitCode, string expected)
+{
+    using var process = Start(file, arguments);
+    // A detached server can retain inherited CLI pipe handles on Windows.
+    // Stop reading when the CLI exits instead of waiting for the server's EOF.
+    using var reading = new CancellationTokenSource();
+    var lines = new ConcurrentQueue<string>();
+    async Task Collect(StreamReader reader)
+    {
+        try { while (await reader.ReadLineAsync(reading.Token) is { } line) lines.Enqueue(line); }
+        catch (OperationCanceledException) { }
+    }
+    var output = Collect(process.StandardOutput);
+    var error = Collect(process.StandardError);
+    try { await process.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromSeconds(60)).Token); }
+    catch { Stop(process); throw; }
+    await Task.Delay(100);
+    await reading.CancelAsync();
+    await Task.WhenAll(output, error);
+    var message = string.Join(Environment.NewLine, lines);
+    Require(process.ExitCode == exitCode && message.Contains(expected, StringComparison.OrdinalIgnoreCase),
+        $"{Path.GetFileName(file)} {string.Join(' ', arguments)}: exit {process.ExitCode}, expected {exitCode}/{expected}: {message}");
+}
+
+async Task Ready(string address)
+{
+    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
+    for (var attempt = 0; attempt < 100; attempt++)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, address + "/.well-known/vibe-re/server")
+                { Version = HttpVersion.Version20, VersionPolicy = HttpVersionPolicy.RequestVersionExact };
+            using var response = await http.SendAsync(request);
+            if (response.IsSuccessStatusCode && (await response.Content.ReadAsStringAsync()).Contains("vibe-re")) return;
+        }
+        catch (HttpRequestException) { }
+        catch (TaskCanceledException) { }
+        await Task.Delay(100);
+    }
+    throw new Exception("Published server did not become ready: " + address);
+}
+
+void StopBundledServers()
+{
+    foreach (var process in Process.GetProcessesByName("vibe-re-server"))
+    {
+        using (process)
+        {
+            try
+            {
+                if (process.MainModule?.FileName is { } file && Path.GetFullPath(file).StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    Stop(process);
+            }
+            catch (System.ComponentModel.Win32Exception) { }
+            catch (InvalidOperationException) { }
+        }
+    }
+}
+
+static void Stop(Process? process)
+{
+    if (process is null) return;
+    try { if (!process.HasExited) { process.Kill(true); process.WaitForExit(10000); } }
+    catch (InvalidOperationException) { }
+}
+
+static void Drain(Process process)
+{
+    process.OutputDataReceived += (_, e) => { if (e.Data is not null) Console.WriteLine(e.Data); };
+    process.ErrorDataReceived += (_, e) => { if (e.Data is not null) Console.Error.WriteLine(e.Data); };
+    process.BeginOutputReadLine();
+    process.BeginErrorReadLine();
+}
+
+static string FreeAddress()
+{
+    using var listener = new TcpListener(IPAddress.Loopback, 0);
+    listener.Start();
+    return "http://127.0.0.1:" + ((IPEndPoint)listener.LocalEndpoint).Port;
+}
+
+static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
+static void CopyDirectory(string source, string destination)
+{
+    Directory.CreateDirectory(destination);
+    foreach (var file in Directory.GetFiles(source))
+    {
+        var target = Path.Combine(destination, Path.GetFileName(file));
+        File.Copy(file, target);
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(target, File.GetUnixFileMode(file));
+    }
+    foreach (var child in Directory.GetDirectories(source)) CopyDirectory(child, Path.Combine(destination, Path.GetFileName(child)));
+}

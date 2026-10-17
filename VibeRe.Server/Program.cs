@@ -2,7 +2,13 @@ using VibeRe.Server;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using VibeRe.Server.Services;
 
-var builder = WebApplication.CreateBuilder(args);
+// Installed clients can launch us from any working directory. Load the shipped
+// settings beside the server, with an optional external configuration directory.
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = Environment.GetEnvironmentVariable("ASPNETCORE_CONTENTROOT") ?? AppContext.BaseDirectory
+});
 
 if (string.IsNullOrEmpty(builder.Configuration["urls"]))
     builder.WebHost.UseUrls("http://localhost:5067");

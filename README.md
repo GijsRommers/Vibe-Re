@@ -4,6 +4,10 @@ VibeRe runs provider authentication on the server. CLI, Avalonia desktop, and MA
 
 ## Run locally
 
+For installers, portable downloads, CI and local packaging commands, see
+[Build and install VibeRe](docs/installation.md). Windows gets a per-user installer;
+Linux and macOS get self-contained archives. Mobile packaging is tracked separately.
+
 Launch either client. No setup step or separate server command is needed:
 
 ```sh
