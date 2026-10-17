@@ -1,57 +1,71 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:VibeRe.Desktop.ViewModels"
-        x:Class="VibeRe.Desktop.Views.MainWindow"
-        x:DataType="vm:MainViewModel"
-        Title="VibeRe · Servers" Width="900" Height="760" MinWidth="600" MinHeight="500">
+        xmlns:client="using:VibeRe.Client"
+        x:Class="VibeRe.Desktop.Views.MainWindow" x:DataType="client:ConnectionSettingsViewModel"
+        Title="VibeRe" Width="720" Height="680" MinWidth="520" MinHeight="480"
+        Background="#F6F7F9" Foreground="#172033" RequestedThemeVariant="Light">
     <ScrollViewer>
-        <StackPanel Margin="32" Spacing="18">
-            <TextBlock Text="Your servers" FontSize="28" FontWeight="SemiBold" />
-            <TextBlock Text="Choose where VibeRe runs. Mistral login is saved on the selected server."
-                       TextWrapping="Wrap" />
+        <StackPanel Margin="36,52" Spacing="24" MaxWidth="480" HorizontalAlignment="Center">
+            <StackPanel Spacing="8">
+                <TextBlock Text="VibeRe" FontSize="32" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                <TextBlock Text="Your workspace, connected." Foreground="#687285" HorizontalAlignment="Center" />
+            </StackPanel>
             <ComboBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
                       IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch" />
-            <CheckBox Content="Start this server locally when needed" IsChecked="{Binding StartLocalServer}"
-                      IsVisible="{Binding CanStartLocally}" IsEnabled="{Binding CanEdit}" />
-            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
-                <TextBox Text="{Binding ServerAddress}" PlaceholderText="Server URL" IsEnabled="{Binding CanEdit}" />
-                <Button Grid.Column="1" Content="Save address" Command="{Binding SaveAddressCommand}" />
-                <Button Grid.Column="2" Content="Remove server" Command="{Binding RemoveServerCommand}" />
-            </Grid>
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                <TextBox Text="{Binding ServerToken}" PasswordChar="●" PlaceholderText="Server access token (optional for local servers)"
-                         IsEnabled="{Binding CanEdit}" />
-                <Button Grid.Column="1" Content="Save token" Command="{Binding SaveTokenCommand}" />
-            </Grid>
-            <TextBlock Text="Saving an empty token clears it. Changing the address clears its saved token."
-                       TextWrapping="Wrap" FontSize="12" />
-            <Border Background="#182C5A80" Padding="18" CornerRadius="8">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Mistral" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
-                    <TextBlock Text="This server needs a Mistral login. Choose browser login or enter an API key below."
-                               IsVisible="{Binding NeedsLogin}" TextWrapping="Wrap" FontWeight="SemiBold" />
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Button Content="Log in with browser" Command="{Binding LoginBrowserCommand}" />
-                        <Button Content="Refresh status" Command="{Binding RefreshCommand}" />
-                        <Button Content="Log out" Command="{Binding LogoutCommand}" />
+            <Border Background="White" BorderBrush="#E2E6ED" BorderThickness="1" Padding="32" CornerRadius="16">
+                <StackPanel Spacing="20">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding LoginTitle}" FontSize="24" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Status}" Foreground="#687285" TextWrapping="Wrap" />
                     </StackPanel>
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <TextBlock Text="Log in to Mistral to get started. Your login is saved on this server."
+                               IsVisible="{Binding NeedsLogin}" TextWrapping="Wrap" Foreground="#687285" />
+                    <Button Content="Log in to Mistral" Command="{Binding LoginBrowserCommand}"
+                            IsVisible="{Binding NeedsLogin}" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center" Padding="20,14" Background="#315CF5"
+                            Foreground="White" BorderThickness="0" CornerRadius="8" FontWeight="SemiBold" />
+                    <Button Content="Use an API key instead" Command="{Binding ToggleApiKeyCommand}"
+                            Background="Transparent" BorderThickness="0" Foreground="#687285"
+                            HorizontalAlignment="Center" IsVisible="{Binding NeedsLogin}" />
+                    <Button Content="Log out" Command="{Binding LogoutCommand}" IsVisible="{Binding IsSignedIn}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" IsVisible="{Binding ShowApiKey}">
                         <TextBox Text="{Binding ApiKey}" PasswordChar="●" PlaceholderText="Mistral API key"
                                  IsEnabled="{Binding CanEdit}" />
                         <Button Grid.Column="1" Content="Log in with key" Command="{Binding LoginApiKeyCommand}" />
                     </Grid>
-                    <TextBox Text="{Binding BrowserUrl}" IsReadOnly="True" TextWrapping="Wrap" PlaceholderText="Browser login URL appears here" />
+                    <TextBox Text="{Binding BrowserUrl}" IsReadOnly="True" TextWrapping="Wrap"
+                             IsVisible="{Binding HasBrowserUrl}" />
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3" />
                     <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" />
                 </StackPanel>
             </Border>
-            <TextBlock Text="Add a server" FontSize="20" FontWeight="SemiBold" />
-            <Grid ColumnDefinitions="180,*,Auto" ColumnSpacing="10">
-                <TextBox Text="{Binding NewServerName}" PlaceholderText="Name" IsEnabled="{Binding CanEdit}" />
-                <TextBox Grid.Column="1" Text="{Binding NewServerAddress}" PlaceholderText="https://vibe.example.com"
-                         IsEnabled="{Binding CanEdit}" />
-                <Button Grid.Column="2" Content="Add server" Command="{Binding AddServerCommand}" />
-            </Grid>
+            <Expander Header="Server settings" HorizontalAlignment="Stretch" IsExpanded="{Binding ShowServerSettings}">
+                <StackPanel Spacing="12" Margin="0,12">
+                    <Button Content="Refresh connection" Command="{Binding RefreshCommand}" />
+                    <Button Content="Remove Mistral login" Command="{Binding LogoutCommand}" />
+                    <CheckBox Content="Start this server locally when needed" IsChecked="{Binding StartLocalServer}"
+                              IsVisible="{Binding CanStartLocally}" IsEnabled="{Binding CanEdit}" />
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                        <TextBox Text="{Binding ServerAddress}" PlaceholderText="Server URL" IsEnabled="{Binding CanEdit}" />
+                        <Button Grid.Column="1" Content="Save address" Command="{Binding SaveAddressCommand}" />
+                        <Button Grid.Column="2" Content="Remove" Command="{Binding RemoveServerCommand}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <TextBox Text="{Binding ServerToken}" PasswordChar="●" PlaceholderText="Server access token"
+                                 IsEnabled="{Binding CanEdit}" />
+                        <Button Grid.Column="1" Content="Save token" Command="{Binding SaveTokenCommand}" />
+                    </Grid>
+                    <TextBlock Text="Saving an empty token clears it. Changing the address clears its saved token."
+                               TextWrapping="Wrap" FontSize="12" />
+                    <TextBlock Text="Add a server" FontWeight="SemiBold" />
+                    <Grid ColumnDefinitions="140,*,Auto" ColumnSpacing="10">
+                        <TextBox Text="{Binding NewServerName}" PlaceholderText="Name" IsEnabled="{Binding CanEdit}" />
+                        <TextBox Grid.Column="1" Text="{Binding NewServerAddress}" PlaceholderText="https://vibe.example.com"
+                                 IsEnabled="{Binding CanEdit}" />
+                        <Button Grid.Column="2" Content="Add" Command="{Binding AddServerCommand}" />
+                    </Grid>
+                </StackPanel>
+            </Expander>
         </StackPanel>
     </ScrollViewer>
 </Window>

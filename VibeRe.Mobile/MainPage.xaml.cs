@@ -1,5 +1,4 @@
 using VibeRe.Client;
-using VibeRe.Client.Configuration;
 
 namespace VibeRe.Mobile;
 
@@ -7,13 +6,10 @@ public partial class MainPage : ContentPage
 {
     private readonly ConnectionSettingsViewModel _model;
 
-    public MainPage()
+    public MainPage(ConnectionSettingsViewModel model)
     {
         InitializeComponent();
-        var connections = new ServerConnectionManager(
-            new ClientConnectionDatabase(Path.Combine(FileSystem.AppDataDirectory, "client.db")),
-            new MobileServerTokenStore());
-        _model = new(connections, async uri => { await Launcher.Default.OpenAsync(uri); });
+        _model = model;
         BindingContext = _model;
     }
 

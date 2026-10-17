@@ -1,10 +1,8 @@
 namespace VibeRe.Client.Configuration;
 
-public sealed class ServerConnectionManager(ClientConnectionDatabase configurations, IServerTokenStore tokens)
+public sealed class ServerConnectionManager(IClientConfigurationStore configurations, IServerTokenStore tokens)
+    : IServerConnectionManager
 {
-    public static ServerConnectionManager CreateDesktop() =>
-        new(new(ClientConnectionDatabase.DesktopPath), new KeyringServerTokenStore());
-
     public Task<ClientConfiguration> LoadAsync(CancellationToken cancellationToken = default) => configurations.LoadAsync(cancellationToken);
 
     public Task<ClientConfiguration> AddAsync(string name, string address, CancellationToken cancellationToken = default, bool startLocally = false)
@@ -51,7 +49,8 @@ public sealed class ServerConnectionManager(ClientConnectionDatabase configurati
             // A saved access token is scoped to its destination and never follows an address change.
             if (server.HasAccessToken) await tokens.DeleteAsync(server.Id, cancellationToken);
             return config with { Servers = config.Servers.Select(x => x.Id == server.Id
-                ? x with { Address = address, HasAccessToken = false, StartLocally = x.StartLocally && new Uri(address).IsLoopback } : x).ToList() };
+                ? x with { Id = Guid.NewGuid(), Address = address, HasAccessToken = false,
+                    StartLocally = x.StartLocally && new Uri(address).IsLoopback } : x).ToList() };
         }, cancellationToken);
     }
 
@@ -79,14 +78,4 @@ public sealed class ServerConnectionManager(ClientConnectionDatabase configurati
             return config with { Servers = config.Servers.Select(x => x.Id == server.Id
                 ? x with { HasAccessToken = token.Length != 0 } : x).ToList() };
         }, cancellationToken);
-
-    public async Task<VibeReClient> ConnectAsync(string? name = null, string? tokenOverride = null,
-        CancellationToken cancellationToken = default)
-    {
-        var server = (await configurations.LoadAsync(cancellationToken)).Find(name);
-        var token = tokenOverride ?? (server.HasAccessToken ? await tokens.GetAsync(server.Id, cancellationToken) : null);
-        if (server.HasAccessToken && token is null) throw new InvalidOperationException("Saved server access token is unavailable. Set it again.");
-        await new LocalServerLauncher().EnsureRunningAsync(server, cancellationToken);
-        return new(server, token);
-    }
 }

@@ -1,16 +1,9 @@
-using VibeRe.Application.Providers.Profiles;
-using VibeRe.Application.Secrets;
-using VibeRe.Domain.Credentials;
-using VibeRe.Domain.Provider;
-
 namespace VibeRe.Application.Providers.Auth;
 
 // Singleton: serializes credential mutations so login/logout cannot race within the server.
 public sealed class AuthService(
     IEnumerable<IAuthFlow> flows,
-    IProfileRepository profiles,
-    ISecretStore secrets,
-    ICredentialResolver credentials) : IAuthService, IDisposable
+    IProviderCredentialStore credentials) : IAuthService, IDisposable
 {
     private readonly Dictionary<string, IAuthFlow> _flows = flows.ToDictionary(x => x.ProviderName, StringComparer.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -29,32 +22,7 @@ public sealed class AuthService(
             if (status.State is not (ProviderAuthState.Authenticated or ProviderAuthState.SubscriptionRequired))
                 return status;
 
-            var profile = await profiles.FindAsync(provider, cancellationToken);
-            var needsSave = profile?.Credential is null;
-            profile ??= new ProviderProfile
-            {
-                Id = Guid.NewGuid(), ProviderIdentifier = provider,
-                Name = provider, BaseUrl = flow.BaseUri.AbsoluteUri
-            };
-            profile.Credential ??= new Credential { Id = Guid.NewGuid(), Kind = CredentialKind.ApiKey };
-            var key = CredentialSecret.Key(profile.Credential.Id);
-            var previous = await secrets.GetAsync(key, cancellationToken);
-            await secrets.SetAsync(key, apiKey, cancellationToken);
-            try
-            {
-                if (needsSave)
-                    await profiles.SaveAsync(profile, cancellationToken);
-            }
-            catch
-            {
-                // Rollback must complete even if the request was canceled.
-                if (previous is null)
-                    await secrets.DeleteAsync(key, CancellationToken.None);
-                else
-                    await secrets.SetAsync(key, previous, CancellationToken.None);
-                throw;
-            }
-
+            await credentials.SaveAsync(provider, flow.BaseUri, apiKey, cancellationToken);
             return status with { Message = status.Message + " Credential saved on this server." };
         }
         finally { _gate.Release(); }
@@ -80,9 +48,7 @@ public sealed class AuthService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            var profile = await profiles.FindAsync(provider, cancellationToken);
-            if (profile?.Credential is { } credential)
-                await secrets.DeleteAsync(CredentialSecret.Key(credential.Id), cancellationToken);
+            await credentials.DeleteAsync(provider, cancellationToken);
         }
         finally { _gate.Release(); }
     }

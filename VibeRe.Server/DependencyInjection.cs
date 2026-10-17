@@ -27,7 +27,8 @@ internal static class DependencyInjection
         services.AddLatchkey("dev.vibe-re");
         services.AddSingleton<ISecretStore, LatchkeySecretStore>();
         services.AddSingleton<IProfileRepository, ProfileRepository>();
-        services.AddSingleton<ICredentialResolver, CredentialResolver>();
+        services.AddSingleton<IProviderCredentialStore, ProviderCredentialStore>();
+        services.AddSingleton<ICredentialResolver>(sp => sp.GetRequiredService<IProviderCredentialStore>());
         services.AddHttpClient<MistralAuthFlow>(client => client.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });

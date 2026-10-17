@@ -7,7 +7,7 @@ VibeRe runs provider authentication on the server. CLI, Avalonia desktop, and MA
 Launch either client. No setup step or separate server command is needed:
 
 ```sh
-dotnet run --project VibeRe.Cli -- auth status
+dotnet run --project VibeRe.Cli
 dotnet run --project VibeRe.Desktop
 ```
 
@@ -17,7 +17,7 @@ This follows [T3's local/remote connection flow](https://github.com/pingdotgg/t3
 
 Published CLI and desktop clients include their server runtime in a `server` subdirectory. In source checkouts, clients start it with `dotnet run`. They can also find `vibe-re-server` beside the client or on `PATH`; `VIBE_RE_SERVER_EXECUTABLE` overrides the executable. The local server runs independently of the client. On macOS/Linux, its startup output goes to `~/.vibe-re/server.log` (`VIBE_RE_SERVER_LOG` can override this). For foreground development, use `dotnet run --project VibeRe.Server`.
 
-When the selected server is signed out, desktop and mobile show a login invitation with browser and API-key choices. The CLI shows the login command and offers the same choices when run interactively. Redirected input never triggers an interactive prompt. An invalid stored key also offers login; provider outages and billing requirements show separate messages.
+When the selected server is signed out, desktop and mobile show a focused **Log in to Mistral** button. Server settings and API-key entry stay collapsed until needed. Launching the CLI without a command prints a login invitation and opens the Mistral browser link automatically. The GUI button and CLI use the same `IVibeReClient.LoginWithBrowserAsync` flow. An invalid stored key also offers login; provider outages and billing requirements show separate messages. The explicit `auth status` command reports status without opening a browser, and scripted secret input uses the stdin options below.
 
 ## Mistral login
 
@@ -87,9 +87,12 @@ dotnet build VibeRe.Desktop
 dotnet test VibeRe.Application.Tests
 dotnet test VibeRe.Infrastructure.Tests
 dotnet test VibeRe.Client.Tests
+dotnet test VibeRe.Cli.Tests
 dotnet test VibeRe.Server.Tests
 ```
 
 The tests use fake Mistral HTTP responses, isolated SQLite databases, and fake secret stores. They cover both login methods, PKCE, expiry/cancellation, billing/rejected-key behavior, credential rollback, server access control, multiple-client visibility, independent servers, restart persistence, and concurrent client configuration updates. They do not sign in to a real Mistral account.
+
+Client services are registered through `AddVibeReClient`. Configuration storage, token storage, server connections, local process startup, readiness checks, and browser opening have explicit interfaces. The connection manager edits saved settings; the connector establishes sessions; CLI parsing, auth commands, and server commands live in separate classes. Provider credential persistence and rollback are separate from authentication policy. Changing a server address rotates its credential identifier, so concurrent clients cannot read a new destination's token using an old connection snapshot.
 
 Mobile builds and the full solution require the .NET MAUI workloads plus the Android/iOS platform SDKs. Install the workloads in your mobile development environment, then build `VibeRe.Mobile` for `net10.0-android` or `net10.0-ios`. The shared mobile/desktop connection logic is exercised by the client and server tests; native mobile packaging still needs platform validation.

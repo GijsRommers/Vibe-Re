@@ -43,14 +43,14 @@ public sealed class ServerConnectionTests : IDisposable
     [Fact]
     public async Task ClientDatabaseStartsWithLocalServerAndWorksWithoutRunningServer()
     {
-        var manager = new ServerConnectionManager(new(ConfigPath), new Tokens());
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens());
         var initial = await manager.LoadAsync();
         Assert.Equal("local", initial.ActiveServer);
         Assert.Equal("http://localhost:5067", initial.Find().Address);
         Assert.True(initial.Find().StartLocally);
         await manager.AddAsync("remote", "https://offline.example");
         await manager.SelectAsync("remote");
-        var reopened = await new ServerConnectionManager(new(ConfigPath), new Tokens()).LoadAsync();
+        var reopened = await new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens()).LoadAsync();
         Assert.Equal("remote", reopened.ActiveServer);
         using var db = new SqliteConnection($"Data Source={ConfigPath};Pooling=False");
         await db.OpenAsync();
@@ -82,7 +82,7 @@ public sealed class ServerConnectionTests : IDisposable
     [Fact]
     public async Task LocalStartupPreferenceIsSavedAndClearedWhenConnectionBecomesRemote()
     {
-        var manager = new ServerConnectionManager(new(ConfigPath), new Tokens());
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens());
         await manager.SetLocalStartupAsync("local", false);
         Assert.False((await manager.LoadAsync()).Find().StartLocally);
         await manager.SetLocalStartupAsync("local", true);
@@ -95,15 +95,16 @@ public sealed class ServerConnectionTests : IDisposable
     public async Task MultipleClientsShareProfilesAndExplicitServerDoesNotChangeDefault()
     {
         var tokens = new Tokens();
-        var first = new ServerConnectionManager(new(ConfigPath), tokens);
-        var second = new ServerConnectionManager(new(ConfigPath), tokens);
+        var first = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        var second = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
         await first.LoadAsync();
         await Task.WhenAll(first.AddAsync("work", "https://work.example"), second.AddAsync("home", "https://home.example"));
         await first.SelectAsync("work");
         var loaded = await second.LoadAsync();
         Assert.Equal(3, loaded.Servers.Count);
         Assert.Equal("work", loaded.ActiveServer);
-        using var explicitServer = await second.ConnectAsync("home");
+        using var explicitServer = await new ServerConnector(new ClientConnectionDatabase(ConfigPath), tokens,
+            new LocalServerLauncher(new ServerReadinessProbe(), new LocalServerProcess())).ConnectAsync("home");
         Assert.Equal("home", explicitServer.Server.Name);
         Assert.Equal("work", (await first.LoadAsync()).ActiveServer);
         await second.RemoveAsync("work");
@@ -114,7 +115,7 @@ public sealed class ServerConnectionTests : IDisposable
     public async Task SecretsAreStoredSeparatelyAndNeverFollowAddressChanges()
     {
         var tokens = new Tokens();
-        var manager = new ServerConnectionManager(new(ConfigPath), tokens);
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
         await manager.AddAsync("remote", "https://one.example");
         var config = await manager.SetTokenAsync("remote", "private-token");
         Assert.DoesNotContain("private-token", System.Text.Encoding.UTF8.GetString(await File.ReadAllBytesAsync(ConfigPath)));
@@ -134,14 +135,14 @@ public sealed class ServerConnectionTests : IDisposable
     [InlineData("file:///tmp/server")]
     public async Task UnsafeServerAddressesAreRejected(string address)
     {
-        var manager = new ServerConnectionManager(new(ConfigPath), new Tokens());
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens());
         await Assert.ThrowsAsync<ArgumentException>(async () => await manager.AddAsync("remote", address));
     }
 
     [Fact]
     public async Task DuplicateNamesAreRejectedAndMalformedDatabaseIsNotOverwritten()
     {
-        var manager = new ServerConnectionManager(new(ConfigPath), new Tokens());
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens());
         await manager.LoadAsync();
         await Assert.ThrowsAsync<ArgumentException>(() => manager.AddAsync("LOCAL", "https://other.example"));
         await File.WriteAllTextAsync(ConfigPath, "broken database");

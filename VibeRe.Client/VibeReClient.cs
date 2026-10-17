@@ -5,7 +5,7 @@ using VibeRe.Protocol;
 
 namespace VibeRe.Client;
 
-public sealed class VibeReClient : IDisposable
+public sealed class VibeReClient : IVibeReClient
 {
     private readonly GrpcChannel _channel;
     private readonly ProviderAuth.ProviderAuthClient _auth;

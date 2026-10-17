@@ -69,12 +69,12 @@ public class AuthServiceTests
         public Profiles Profiles { get; } = new();
         public Secrets Secrets { get; } = new();
         public Flow Flow { get; } = new();
-        public CredentialResolver Resolver { get; }
+        public ProviderCredentialStore Resolver { get; }
         public AuthService Auth { get; }
         public Fixture()
         {
             Resolver = new(Profiles, Secrets);
-            Auth = new([Flow], Profiles, Secrets, Resolver);
+            Auth = new([Flow], Resolver);
         }
     }
 

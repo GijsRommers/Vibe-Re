@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 namespace VibeRe.Client.Configuration;
 
 // Client-owned storage: opening/managing servers never requires a running VibeRe server.
-public sealed class ClientConnectionDatabase(string path)
+public sealed class ClientConnectionDatabase(string path) : IClientConfigurationStore
 {
     public string FilePath { get; } = Path.GetFullPath(path);
     public static string DesktopPath => Environment.GetEnvironmentVariable("VIBE_RE_CLIENT_DATABASE")

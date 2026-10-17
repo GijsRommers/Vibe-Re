@@ -65,6 +65,23 @@ public class ProviderAuthIntegrationTests
     }
 
     [Fact]
+    public async Task SharedBrowserLoginOpensClientUrlAndPersistsCredentialOnServer()
+    {
+        using var server = new Factory();
+        using var client = server.Connect();
+        string? opened = null;
+        var result = await client.LoginWithBrowserAsync(attempt =>
+        {
+            opened = attempt.SignInUrl;
+            return Task.CompletedTask;
+        });
+        Assert.Equal("https://console.mistral.ai/login", opened);
+        Assert.Equal(BrowserLoginState.Completed, result.State);
+        Assert.Equal(AuthState.Authenticated, result.AuthStatus.State);
+        Assert.Contains("browser-key", server.Secrets.Values.Values);
+    }
+
+    [Fact]
     public async Task LogoutCancelsPendingBrowserLogin()
     {
         using var server = new Factory();

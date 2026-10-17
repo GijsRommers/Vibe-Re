@@ -60,6 +60,22 @@ public class BrowserAuthServiceTests
     }
 
     [Fact]
+    public async Task TerminalAttemptsDoNotConsumePendingLoginCapacity()
+    {
+        var fixture = new AuthServiceTests.Fixture();
+        var clock = new Clock();
+        var browser = new BrowserAuthService([new BrowserFlow(clock)], fixture.Auth, clock);
+        for (var i = 0; i < 80; i++)
+        {
+            var canceled = await browser.StartAsync("mistral");
+            await browser.CancelAsync(canceled.AttemptId);
+            var completed = await browser.StartAsync("mistral");
+            Assert.Equal(BrowserAttemptState.Completed, (await browser.PollAsync(completed.AttemptId)).State);
+        }
+        Assert.Equal(BrowserAttemptState.Waiting, (await browser.StartAsync("mistral")).State);
+    }
+
+    [Fact]
     public async Task PollingIsThrottledAndAttemptsAreBounded()
     {
         var fixture = new AuthServiceTests.Fixture();

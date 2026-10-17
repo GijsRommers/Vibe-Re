@@ -3,11 +3,16 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Grpc.Core;
 using VibeRe.Client.Configuration;
+using VibeRe.Protocol;
 
 namespace VibeRe.Client;
 
 // Shared UI behavior for desktop and mobile; platform code only supplies storage and a browser opener.
-public partial class ConnectionSettingsViewModel(ServerConnectionManager connections, Func<Uri, Task> openBrowser) : ObservableObject
+public partial class ConnectionSettingsViewModel(
+    IServerConnectionManager connections,
+    IServerConnector connector,
+    LocalServerMonitor monitor,
+    IBrowserLauncher browser) : ObservableObject
 {
     private bool _applying;
     private bool _syncingLaunchOption;
@@ -27,8 +32,15 @@ public partial class ConnectionSettingsViewModel(ServerConnectionManager connect
     [ObservableProperty] private string _serverToken = "";
     [ObservableProperty] private string _apiKey = "";
     [ObservableProperty] private string _status = "Select a server to connect.";
-    [ObservableProperty] private string _browserUrl = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBrowserUrl))]
+    private string _browserUrl = "";
     [ObservableProperty] private bool _needsLogin;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LoginTitle))]
+    private bool _isSignedIn;
+    [ObservableProperty] private bool _showApiKey;
+    [ObservableProperty] private bool _showServerSettings;
     [ObservableProperty] private bool _startLocalServer;
 
     [ObservableProperty]
@@ -38,6 +50,8 @@ public partial class ConnectionSettingsViewModel(ServerConnectionManager connect
     private bool _isBusy;
 
     public bool CanEdit => !IsBusy;
+    public string LoginTitle => IsSignedIn ? "You're connected" : "Connect to Mistral";
+    public bool HasBrowserUrl => BrowserUrl.Length != 0;
     public bool CanStartLocally => SelectedServer is { } server && new Uri(server.Address).IsLoopback &&
         !OperatingSystem.IsAndroid() && !OperatingSystem.IsIOS();
     private bool CanConnect() => !IsBusy && SelectedServer is not null;
@@ -53,7 +67,12 @@ public partial class ConnectionSettingsViewModel(ServerConnectionManager connect
     {
         if (_monitor is not null) return;
         _monitor = new();
-        _ = MonitorAsync(_monitor.Token);
+        _ = monitor.RunAsync(() => IsBusy ? null : SelectedServer,
+            token => RunAsync(async ct =>
+            {
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
+                await RefreshCoreAsync(linked.Token);
+            }), _monitor.Token);
     }
 
     public void StopMonitoring()
@@ -64,25 +83,6 @@ public partial class ConnectionSettingsViewModel(ServerConnectionManager connect
         _operation?.Cancel();
     }
 
-    private async Task MonitorAsync(CancellationToken token)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
-        try
-        {
-            while (await timer.WaitForNextTickAsync(token))
-            {
-                if (IsBusy || SelectedServer is not { StartLocally: true } server) continue;
-                if (await LocalServerLauncher.IsReadyAsync(new Uri(server.Address), token)) continue;
-                await RunAsync(async ct =>
-                {
-                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
-                    await RefreshCoreAsync(linked.Token);
-                });
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-    }
-
     partial void OnSelectedServerChanged(ServerConnection? value)
     {
         ServerAddress = value?.Address ?? "";
@@ -90,6 +90,8 @@ public partial class ConnectionSettingsViewModel(ServerConnectionManager connect
         ApiKey = "";
         BrowserUrl = "";
         NeedsLogin = false;
+        IsSignedIn = false;
+        ShowApiKey = false;
         _syncingLaunchOption = true;
         StartLocalServer = value?.StartLocally ?? false;
         _syncingLaunchOption = false;
@@ -152,49 +154,61 @@ public partial class ConnectionSettingsViewModel(ServerConnectionManager connect
     {
         var key = ApiKey;
         ApiKey = "";
-        using var client = await connections.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
+        using var client = await connector.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
         var result = await client.LoginAsync(key, ct);
-        Status = $"{client.Server.Name}: {result.Message}";
-        NeedsLogin = VibeReClient.NeedsLogin(result);
+        ApplyStatus(client.Server.Name, result);
     });
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private Task LoginBrowserAsync() => RunAsync(async ct =>
     {
-        using var client = await connections.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
+        using var client = await connector.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
         var result = await client.LoginWithBrowserAsync(async attempt =>
         {
             BrowserUrl = attempt.SignInUrl;
             Status = $"Log in to Mistral in your browser to authorize {client.Server.Name}. You can also open the URL below.";
-            try { await openBrowser(new Uri(attempt.SignInUrl)); }
+            try { await browser.OpenAsync(new Uri(attempt.SignInUrl)); }
             catch { /* The visible URL allows manual browser login; continue polling. */ }
         }, ct);
         BrowserUrl = "";
         Status = $"{client.Server.Name}: {result.Message}";
-        if (result.AuthStatus is { } status) NeedsLogin = VibeReClient.NeedsLogin(status);
+        if (result.AuthStatus is { } status) ApplyStatus(client.Server.Name, status);
     });
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private Task LogoutAsync() => RunAsync(async ct =>
     {
-        using var client = await connections.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
+        using var client = await connector.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
         var result = await client.LogoutAsync(ct);
-        Status = $"{client.Server.Name}: {result.Message}";
-        NeedsLogin = true;
+        ApplyStatus(client.Server.Name, result);
     });
 
     [RelayCommand]
     private void Cancel() => _operation?.Cancel();
 
+    [RelayCommand]
+    private void ToggleApiKey() => ShowApiKey = !ShowApiKey;
+
+    [RelayCommand]
+    private void ToggleServerSettings() => ShowServerSettings = !ShowServerSettings;
+
     private async Task RefreshCoreAsync(CancellationToken ct)
     {
         NeedsLogin = false;
+        IsSignedIn = false;
         if (SelectedServer is null) { Status = "Add a server to connect."; return; }
         Status = $"Connecting to {SelectedServer.Name}…";
-        using var client = await connections.ConnectAsync(SelectedServer.Name, cancellationToken: ct);
+        using var client = await connector.ConnectAsync(SelectedServer.Name, cancellationToken: ct);
         var result = await client.GetStatusAsync(ct);
-        Status = $"{client.Server.Name}: {result.Message}";
-        NeedsLogin = VibeReClient.NeedsLogin(result);
+        ApplyStatus(client.Server.Name, result);
+    }
+
+    private void ApplyStatus(string serverName, AuthStatusReply status)
+    {
+        Status = $"{serverName}: {status.Message}";
+        NeedsLogin = VibeReClient.NeedsLogin(status);
+        IsSignedIn = status.State is AuthState.Authenticated or AuthState.SubscriptionRequired;
+        if (IsSignedIn) ShowApiKey = false;
     }
 
     private void Apply(ClientConfiguration config)

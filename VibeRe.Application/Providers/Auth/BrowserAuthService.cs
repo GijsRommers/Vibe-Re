@@ -8,8 +8,10 @@ namespace VibeRe.Application.Providers.Auth;
 public sealed class BrowserAuthService(IEnumerable<IBrowserAuthFlow> flows, IAuthService auth, TimeProvider time)
     : IBrowserAuthService
 {
+    private const int MaxPendingAttempts = 32;
+    private const int MaxRetainedAttempts = 64;
     private readonly Dictionary<string, IBrowserAuthFlow> _flows = flows.ToDictionary(x => x.ProviderName);
-    private readonly ConcurrentDictionary<string, Attempt> _attempts = new();
+    private readonly ConcurrentDictionary<string, BrowserLoginAttempt> _attempts = new();
     private readonly SemaphoreSlim _startGate = new(1, 1);
 
     public async Task<BrowserAttemptStatus> StartAsync(string provider, CancellationToken cancellationToken = default)
@@ -20,7 +22,12 @@ public sealed class BrowserAuthService(IEnumerable<IBrowserAuthFlow> flows, IAut
         {
             foreach (var entry in _attempts.Where(x => x.Value.Status.ExpiresAt <= time.GetUtcNow()))
                 _attempts.TryRemove(entry.Key, out _);
-            if (_attempts.Count >= 32) throw new InvalidOperationException("Too many pending browser logins.");
+            if (_attempts.Count(x => x.Value.Status.State == BrowserAttemptState.Waiting) >= MaxPendingAttempts)
+                throw new InvalidOperationException("Too many pending browser logins.");
+            // Keep recent terminal results for repeated polls without allowing unbounded retention.
+            foreach (var entry in _attempts.Where(x => x.Value.Status.State != BrowserAttemptState.Waiting)
+                         .OrderBy(x => x.Value.Status.ExpiresAt).Take(Math.Max(0, _attempts.Count - MaxRetainedAttempts + 1)))
+                _attempts.TryRemove(entry.Key, out _);
             var verifier = Encode(RandomNumberGenerator.GetBytes(64));
             var challenge = Encode(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
             var process = await flow.StartAsync(challenge, cancellationToken);
@@ -43,7 +50,7 @@ public sealed class BrowserAuthService(IEnumerable<IBrowserAuthFlow> flows, IAut
         {
             if (attempt.Status.State != BrowserAttemptState.Waiting) return attempt.Status;
             if (time.GetUtcNow() >= attempt.Status.ExpiresAt)
-                return Finish(attempt, BrowserAttemptState.Expired, "Browser login expired. Start again.");
+                return attempt.Finish(BrowserAttemptState.Expired, "Browser login expired. Start again.");
             if (time.GetUtcNow() < attempt.NextPollAt) return attempt.Status;
             attempt.NextPollAt = time.GetUtcNow().AddSeconds(3);
             try
@@ -54,26 +61,32 @@ public sealed class BrowserAuthService(IEnumerable<IBrowserAuthFlow> flows, IAut
                 {
                     case "pending": return attempt.Status;
                     case "completed" when !string.IsNullOrWhiteSpace(poll.ExchangeToken):
-                        var key = await flow.ExchangeAsync(attempt.Process.ProcessId, poll.ExchangeToken,
-                            attempt.Verifier!, cancellationToken);
-                        // Both login methods use exactly the same validation and persistence action.
-                        var result = await auth.LoginAsync(attempt.Provider, key, cancellationToken);
-                        attempt.Status = attempt.Status with { AuthStatus = result };
-                        return Finish(attempt,
-                            result.State is ProviderAuthState.Authenticated or ProviderAuthState.SubscriptionRequired
-                                ? BrowserAttemptState.Completed : BrowserAttemptState.Failed, result.Message);
-                    case "expired": return Finish(attempt, BrowserAttemptState.Expired, "Browser login expired. Start again.");
-                    case "denied": return Finish(attempt, BrowserAttemptState.Failed, "Browser login was denied.");
-                    default: return Finish(attempt, BrowserAttemptState.Failed, "Mistral browser login failed. Start again.");
+                        return await CompleteAsync(attempt, flow, poll.ExchangeToken, cancellationToken);
+                    case "expired": return attempt.Finish(BrowserAttemptState.Expired, "Browser login expired. Start again.");
+                    case "denied": return attempt.Finish(BrowserAttemptState.Failed, "Browser login was denied.");
+                    default: return attempt.Finish(BrowserAttemptState.Failed, "Mistral browser login failed. Start again.");
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch
             {
-                return Finish(attempt, BrowserAttemptState.Failed, "Could not complete Mistral browser login. Start again.");
+                return attempt.Finish(BrowserAttemptState.Failed, "Could not complete Mistral browser login. Start again.");
             }
         }
         finally { attempt.Gate.Release(); }
+    }
+
+    private async Task<BrowserAttemptStatus> CompleteAsync(BrowserLoginAttempt attempt, IBrowserAuthFlow flow,
+        string exchangeToken, CancellationToken cancellationToken)
+    {
+        var key = await flow.ExchangeAsync(attempt.Process.ProcessId, exchangeToken,
+            attempt.Verifier!, cancellationToken);
+        // Both login methods use exactly the same validation and persistence action.
+        var result = await auth.LoginAsync(attempt.Provider, key, cancellationToken);
+        attempt.Status = attempt.Status with { AuthStatus = result };
+        return attempt.Finish(
+            result.State is ProviderAuthState.Authenticated or ProviderAuthState.SubscriptionRequired
+                ? BrowserAttemptState.Completed : BrowserAttemptState.Failed, result.Message);
     }
 
     public async Task<BrowserAttemptStatus> CancelAsync(string attemptId, CancellationToken cancellationToken = default)
@@ -83,7 +96,7 @@ public sealed class BrowserAuthService(IEnumerable<IBrowserAuthFlow> flows, IAut
         try
         {
             return attempt.Status.State == BrowserAttemptState.Waiting
-                ? Finish(attempt, BrowserAttemptState.Canceled, "Browser login canceled.") : attempt.Status;
+                ? attempt.Finish(BrowserAttemptState.Canceled, "Browser login canceled.") : attempt.Status;
         }
         finally { attempt.Gate.Release(); }
     }
@@ -99,24 +112,8 @@ public sealed class BrowserAuthService(IEnumerable<IBrowserAuthFlow> flows, IAut
         finally { _startGate.Release(); }
     }
 
-    private Attempt Find(string id) => _attempts.TryGetValue(id, out var attempt)
+    private BrowserLoginAttempt Find(string id) => _attempts.TryGetValue(id, out var attempt)
         ? attempt : throw new ArgumentException("Browser login not found or expired. Start again.");
 
-    private static BrowserAttemptStatus Finish(Attempt attempt, BrowserAttemptState state, string message)
-    {
-        attempt.Verifier = null;
-        return attempt.Status = attempt.Status with { State = state, Message = message };
-    }
-
     private static string Encode(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-    private sealed class Attempt(string provider, string verifier, BrowserProcess process, BrowserAttemptStatus status)
-    {
-        public string Provider { get; } = provider;
-        public string? Verifier { get; set; } = verifier;
-        public BrowserProcess Process { get; } = process;
-        public BrowserAttemptStatus Status { get; set; } = status;
-        public DateTimeOffset NextPollAt { get; set; }
-        public SemaphoreSlim Gate { get; } = new(1, 1);
-    }
 }
