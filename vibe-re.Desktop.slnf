@@ -7,6 +7,7 @@
       "VibeRe.Client\\VibeRe.Client.csproj",
       "VibeRe.Client.Tests\\VibeRe.Client.Tests.csproj",
       "VibeRe.Cli\\VibeRe.Cli.csproj",
+      "VibeRe.Cli.Tests\\VibeRe.Cli.Tests.csproj",
       "VibeRe.Desktop\\VibeRe.Desktop.csproj",
       "VibeRe.Domain\\VibeRe.Domain.csproj",
       "VibeRe.Infrastructure\\VibeRe.Infrastructure.csproj",

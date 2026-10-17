@@ -91,7 +91,7 @@ or overwrite user databases.
 Install a stable .NET 10 SDK (`global.json` allows newer 10.0 feature bands) and
 PowerShell 7 for the cross-platform scripts. Windows PowerShell 5.1 also works
 for these scripts. The desktop solution filter builds CLI, server, Avalonia,
-shared libraries and all five test projects without loading MAUI:
+shared libraries and all non-mobile test projects (including CLI tests) without loading MAUI:
 
 ```powershell
 ./build/Test.ps1
