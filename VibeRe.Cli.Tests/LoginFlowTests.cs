@@ -1,11 +1,9 @@
-using VibeRe.Runtime.Adapters;
+using VibeRe.Client.Infrastructure;
+using VibeRe.Client.Infrastructure.Adapters;
 using Microsoft.Extensions.DependencyInjection;
 using System.ComponentModel;
-using Grpc.Core;
-using VibeRe.Client;
-using VibeRe.Runtime;
-using VibeRe.Runtime.Configuration;
-using VibeRe.Protocol;
+using VibeRe.Client.Application;
+using VibeRe.Client.Application.Configuration;
 
 namespace VibeRe.Cli.Tests;
 
@@ -45,7 +43,7 @@ public sealed class LoginFlowTests : IDisposable
     {
         var client = new ClientStub(AuthState.SignedOut);
         var browser = new BrowserStub();
-        using var services = new ServiceCollection().AddVibeReRuntime(_database)
+        using var services = new ServiceCollection().AddVibeReClient(_database)
             .AddSingleton<IServerConnector>(new ConnectorStub(client))
             .AddSingleton<IBrowserLauncher>(browser)
             .BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
@@ -120,7 +118,7 @@ public sealed class LoginFlowTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task CancelingGuiLoginClearsPendingStateAndAllowsRetry(bool rpcCancellation)
+    public async Task CancelingGuiLoginClearsPendingStateAndAllowsRetry(bool wrapCancellation)
     {
         var connector = new SwitchingConnector();
         using var services = CreateServices(connector);
@@ -133,8 +131,8 @@ public sealed class LoginFlowTests : IDisposable
         {
             started.SetResult();
             try { await Task.Delay(Timeout.Infinite, ct); }
-            catch (OperationCanceledException) when (rpcCancellation)
-            { throw new RpcException(new Status(StatusCode.Cancelled, "Canceled by caller.")); }
+            catch (OperationCanceledException error) when (wrapCancellation)
+            { throw new OperationCanceledException("Canceled by caller.", error, ct); }
         };
         var login = model.LoginBrowserCommand.ExecuteAsync(null);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -247,7 +245,7 @@ public sealed class LoginFlowTests : IDisposable
         new(connector, new ClientStartup(new ClientConnectionDatabase(_database), connector), browser);
 
     private ServiceProvider CreateServices(IServerConnector connector) =>
-        new ServiceCollection().AddVibeReRuntime(_database)
+        new ServiceCollection().AddVibeReClient(_database)
             .AddSingleton(connector).AddSingleton<IBrowserLauncher>(new BrowserStub())
             .BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
 
@@ -297,7 +295,7 @@ public sealed class LoginFlowTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             Requests.Add(name!);
-            if (Offline.Contains(name!)) throw new RpcException(new Status(StatusCode.Unavailable, "Offline."));
+            if (Offline.Contains(name!)) throw new ServerConnectionException("Could not connect to this server. Check its address and whether it is running.");
             return Task.FromResult(new ServerSession(Clients[name!].Server, Clients[name!]));
         }
     }
@@ -309,12 +307,12 @@ public sealed class LoginFlowTests : IDisposable
         public int Logouts { get; private set; }
         public int StatusChecks { get; private set; }
         public Func<CancellationToken, Task>? LoginWait { get; set; }
-        public Task<AuthStatusReply> GetStatusAsync(CancellationToken cancellationToken = default)
+        public Task<AuthStatus> GetStatusAsync(CancellationToken cancellationToken = default)
         {
             StatusChecks++;
-            return Task.FromResult(new AuthStatusReply { State = state, Message = "Test account status." });
+            return Task.FromResult(new AuthStatus { State = state, Message = "Test account status." });
         }
-        public async Task<BrowserLoginReply> LoginWithBrowserAsync(Func<BrowserLoginReply, Task> showBrowser,
+        public async Task<BrowserLoginResult> LoginWithBrowserAsync(Func<BrowserLoginResult, Task> showBrowser,
             CancellationToken cancellationToken = default)
         {
             BrowserLogins++;
@@ -324,8 +322,8 @@ public sealed class LoginFlowTests : IDisposable
             return new() { State = BrowserLoginState.Completed, Message = "Connected.",
                 AuthStatus = new() { State = AuthState.Authenticated, Message = "Connected." } };
         }
-        public Task<AuthStatusReply> LoginAsync(string apiKey, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<AuthStatusReply> LogoutAsync(CancellationToken cancellationToken = default)
+        public Task<AuthStatus> LoginAsync(string apiKey, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AuthStatus> LogoutAsync(CancellationToken cancellationToken = default)
         {
             Logouts++;
             state = AuthState.SignedOut;

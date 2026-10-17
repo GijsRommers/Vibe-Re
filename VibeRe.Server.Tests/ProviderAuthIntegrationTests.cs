@@ -1,13 +1,14 @@
+using System.Text;
 using Grpc.Core;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using VibeRe.Application.Providers.Auth;
-using VibeRe.Application.Secrets;
-using VibeRe.Client;
-using VibeRe.Protocol;
+using VibeRe.Server.Application.Providers.Auth;
+using VibeRe.Server.Application.Secrets;
+using VibeRe.Client.Application;
+using VibeRe.Client.Infrastructure;
 
 namespace VibeRe.Server.Tests;
 
@@ -50,17 +51,26 @@ public class ProviderAuthIntegrationTests
     {
         using var server = new Factory();
         using var client = server.Connect();
-        var attempt = await client.StartBrowserLoginAsync();
-        Assert.DoesNotContain("verifier", attempt.ToString());
-        var completion = await client.PollBrowserLoginAsync(attempt.AttemptId);
+        var completion = await client.LoginWithBrowserAsync(attempt =>
+        {
+            Assert.DoesNotContain("verifier", attempt.ToString());
+            return Task.CompletedTask;
+        });
         Assert.Equal(BrowserLoginState.Completed, completion.State);
-        Assert.Equal(AuthState.Authenticated, completion.AuthStatus.State);
+        Assert.Equal(AuthState.Authenticated, completion.AuthStatus!.State);
         Assert.DoesNotContain("browser-key", completion.ToString());
+        Assert.NotNull(server.Browser.LastVerifier);
+        Assert.All(server.Responses, response =>
+        {
+            Assert.DoesNotContain("browser-key", response);
+            Assert.DoesNotContain(server.Browser.LastVerifier, response);
+        });
         Assert.Contains("browser-key", server.Secrets.Values.Values);
         await client.LoginAsync("new-api-key");
         Assert.Contains("new-api-key", server.Secrets.Values.Values);
         Assert.DoesNotContain("browser-key", server.Secrets.Values.Values);
         Assert.Equal(AuthState.Authenticated, (await client.GetStatusAsync()).State);
+        Assert.All(server.Responses, response => Assert.DoesNotContain("new-api-key", response));
     }
 
     [Fact]
@@ -76,7 +86,7 @@ public class ProviderAuthIntegrationTests
         });
         Assert.Equal("https://console.mistral.ai/login", opened);
         Assert.Equal(BrowserLoginState.Completed, result.State);
-        Assert.Equal(AuthState.Authenticated, result.AuthStatus.State);
+        Assert.Equal(AuthState.Authenticated, result.AuthStatus!.State);
         Assert.Contains("browser-key", server.Secrets.Values.Values);
     }
 
@@ -85,9 +95,9 @@ public class ProviderAuthIntegrationTests
     {
         using var server = new Factory();
         using var client = server.Connect();
-        var attempt = await client.StartBrowserLoginAsync();
-        await client.LogoutAsync();
-        Assert.Equal(BrowserLoginState.Canceled, (await client.PollBrowserLoginAsync(attempt.AttemptId)).State);
+        var result = await client.LoginWithBrowserAsync(async _ => { await client.LogoutAsync(); });
+        Assert.Equal(BrowserLoginState.Canceled, result.State);
+        Assert.Empty(server.Secrets.Values);
         Assert.Equal(AuthState.SignedOut, (await client.GetStatusAsync()).State);
     }
 
@@ -98,8 +108,8 @@ public class ProviderAuthIntegrationTests
     {
         using var server = new Factory();
         using var client = server.Connect(token);
-        var error = await Assert.ThrowsAsync<RpcException>(() => client.LoginAsync("valid-key"));
-        Assert.Equal(StatusCode.Unauthenticated, error.StatusCode);
+        var error = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginAsync("valid-key"));
+        Assert.Equal(StatusCode.Unauthenticated, Assert.IsType<RpcException>(error.InnerException).StatusCode);
         Assert.Empty(server.Secrets.Values);
     }
 
@@ -108,12 +118,12 @@ public class ProviderAuthIntegrationTests
     {
         using var server = new Factory();
         using var client = server.Connect();
-        var invalid = await Assert.ThrowsAsync<RpcException>(() => client.LoginAsync(""));
-        Assert.Equal(StatusCode.InvalidArgument, invalid.StatusCode);
+        var invalid = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginAsync(""));
+        Assert.Equal(StatusCode.InvalidArgument, Assert.IsType<RpcException>(invalid.InnerException).StatusCode);
         server.Secrets.Fail = true;
-        var failed = await Assert.ThrowsAsync<RpcException>(() => client.LoginAsync("valid-key"));
-        Assert.Equal(StatusCode.Internal, failed.StatusCode);
-        Assert.DoesNotContain("sensitive-storage-value", failed.Status.Detail);
+        var failed = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginAsync("valid-key"));
+        Assert.Equal(StatusCode.Internal, Assert.IsType<RpcException>(failed.InnerException).StatusCode);
+        Assert.DoesNotContain("sensitive-storage-value", failed.ToString());
     }
 
     [Fact]
@@ -139,6 +149,8 @@ public class ProviderAuthIntegrationTests
         private readonly string? _temporaryDirectory;
         private readonly string _database;
         public Secrets Secrets { get; }
+        public BrowserFlow Browser { get; } = new();
+        public List<string> Responses { get; } = [];
         public Factory(string? database = null, Secrets? secrets = null)
         {
             if (database is null)
@@ -166,18 +178,29 @@ public class ProviderAuthIntegrationTests
                 services.RemoveAll<IBrowserAuthFlow>();
                 services.AddSingleton<ISecretStore>(Secrets);
                 services.AddSingleton<IAuthFlow, Flow>();
-                services.AddSingleton<IBrowserAuthFlow, BrowserFlow>();
+                services.AddSingleton<IBrowserAuthFlow>(Browser);
             });
         }
 
-        public VibeReClient Connect(string? token = "server-token") =>
-            new("http://localhost", token, Server.CreateHandler());
+        public IVibeReClient Connect(string? token = "server-token") =>
+            new VibeReClient("http://localhost", token, new RecordingHandler(Server.CreateHandler(), Responses));
 
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
             if (disposing && _temporaryDirectory is not null && Directory.Exists(_temporaryDirectory))
                 Directory.Delete(_temporaryDirectory, true);
+        }
+    }
+
+    private sealed class RecordingHandler(HttpMessageHandler inner, List<string> responses) : DelegatingHandler(inner)
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var response = await base.SendAsync(request, cancellationToken);
+            // Inspect the actual transport payload so application mapping cannot hide leaked secrets.
+            responses.Add(Encoding.UTF8.GetString(await response.Content.ReadAsByteArrayAsync(cancellationToken)));
+            return response;
         }
     }
 
@@ -205,11 +228,16 @@ public class ProviderAuthIntegrationTests
 
     private sealed class BrowserFlow : IBrowserAuthFlow
     {
+        public string? LastVerifier { get; private set; }
         public string ProviderName => "mistral";
         public Task<BrowserProcess> StartAsync(string challenge, CancellationToken cancellationToken) =>
             Task.FromResult(new BrowserProcess("process", new("https://console.mistral.ai/login"),
                 new("https://console.mistral.ai/api/poll"), DateTimeOffset.UtcNow.AddMinutes(5)));
         public Task<BrowserPoll> PollAsync(Uri pollUri, CancellationToken cancellationToken) => Task.FromResult(new BrowserPoll("completed", "exchange"));
-        public Task<string> ExchangeAsync(string processId, string exchangeToken, string verifier, CancellationToken cancellationToken) => Task.FromResult("browser-key");
+        public Task<string> ExchangeAsync(string processId, string exchangeToken, string verifier, CancellationToken cancellationToken)
+        {
+            LastVerifier = verifier;
+            return Task.FromResult("browser-key");
+        }
     }
 }

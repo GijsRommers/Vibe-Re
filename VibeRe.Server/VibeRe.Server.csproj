@@ -5,8 +5,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj"/>
-        <ProjectReference Include="..\VibeRe.Infrastructure\VibeRe.Infrastructure.csproj"/>
+        <ProjectReference Include="..\VibeRe.Server.Application\VibeRe.Server.Application.csproj"/>
+        <ProjectReference Include="..\VibeRe.Server.Infrastructure\VibeRe.Server.Infrastructure.csproj"/>
         <ProjectReference Include="..\VibeRe.Protocol\VibeRe.Protocol.csproj"/>
     </ItemGroup>
 

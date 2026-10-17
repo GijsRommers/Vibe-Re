@@ -1,3 +1,5 @@
+using VibeRe.Client.Application;
+using VibeRe.Client.Infrastructure;
 namespace VibeRe.Client.Tests;
 
 public sealed class ServerAddressTests

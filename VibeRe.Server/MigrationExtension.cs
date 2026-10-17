@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using VibeRe.Infrastructure.Persistence;
+using VibeRe.Server.Infrastructure.Persistence;
 
 namespace VibeRe.Server;
 

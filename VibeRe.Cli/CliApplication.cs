@@ -1,5 +1,5 @@
-using Grpc.Core;
-using VibeRe.Runtime.Configuration;
+using VibeRe.Client.Application;
+using VibeRe.Client.Application.Configuration;
 
 namespace VibeRe.Cli;
 
@@ -19,14 +19,7 @@ public sealed class CliApplication(AuthCommands auth, ServerCommands servers)
                 : await auth.ExecuteAsync(options, cancellation.Token);
         }
         catch (OperationCanceledException) { Console.Error.WriteLine("Canceled."); return 130; }
-        catch (RpcException e) when (e.StatusCode == StatusCode.Cancelled && cancellation.IsCancellationRequested)
-        { Console.Error.WriteLine("Canceled."); return 130; }
-        catch (RpcException e)
-        {
-            Console.Error.WriteLine(e.StatusCode == StatusCode.Unavailable
-                ? "Could not connect to the server. Check the configured address." : e.Status.Detail);
-            return 1;
-        }
+        catch (ServerConnectionException e) { Console.Error.WriteLine(e.Message); return 1; }
         catch (ArgumentException e) { Console.Error.WriteLine(e.Message); return 2; }
         catch (LocalServerStartupException e) { Console.Error.WriteLine(e.Message); return 1; }
         catch { Console.Error.WriteLine("Could not access saved server settings or credential storage."); return 1; }

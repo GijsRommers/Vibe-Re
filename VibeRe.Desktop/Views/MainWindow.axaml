@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:client="using:VibeRe.Runtime"
+        xmlns:client="using:VibeRe.Client.Application"
         x:Class="VibeRe.Desktop.Views.MainWindow" x:DataType="client:ConnectionSettingsViewModel"
         Title="VibeRe" Width="720" Height="680" MinWidth="520" MinHeight="480"
         Background="#101010" Foreground="#F5F5F5" RequestedThemeVariant="Dark">

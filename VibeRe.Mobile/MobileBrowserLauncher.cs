@@ -1,5 +1,4 @@
-using VibeRe.Client;
-using VibeRe.Runtime;
+using VibeRe.Client.Application;
 
 namespace VibeRe.Mobile;
 

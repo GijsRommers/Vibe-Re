@@ -1,7 +1,5 @@
-using VibeRe.Client;
-using VibeRe.Runtime;
-using VibeRe.Runtime.Configuration;
-using VibeRe.Protocol;
+using VibeRe.Client.Application;
+using VibeRe.Client.Application.Configuration;
 
 namespace VibeRe.Cli;
 
@@ -31,8 +29,8 @@ public sealed class AuthCommands(IServerConnector connector, ClientStartup start
             if (launch is null) { Console.WriteLine("Server is optional. Use auth login to connect."); return 0; }
             PrintServer(launch);
             PrintStatus(launch.Status!);
-            if (VibeReClient.NeedsLogin(launch.Status!)) Console.WriteLine("Not logged in.");
-            return VibeReClient.NeedsLogin(launch.Status!)
+            if (launch.Status!.NeedsLogin) Console.WriteLine("Not logged in.");
+            return launch.Status!.NeedsLogin
                 ? await LoginAsync(launch, "browser", false, cancellationToken)
                 : ExitCode(launch.Status!);
         }
@@ -44,11 +42,11 @@ public sealed class AuthCommands(IServerConnector connector, ClientStartup start
         var status = verb == "logout" ? await session.Client.LogoutAsync(cancellationToken) : await session.Client.GetStatusAsync(cancellationToken);
         PrintStatus(status);
         if (verb == "logout") return 0;
-        if (VibeReClient.NeedsLogin(status)) Console.WriteLine($"Run: vibe-re --server {session.Server.Name} auth login");
+        if (status.NeedsLogin) Console.WriteLine($"Run: vibe-re --server {session.Server.Name} auth login");
         return ExitCode(status);
     }
 
-    private static int ExitCode(AuthStatusReply status) => status.State == AuthState.Authenticated ? 0 : 1;
+    private static int ExitCode(AuthStatus status) => status.State == AuthState.Authenticated ? 0 : 1;
     private static void PrintServer(ServerSession session) => Console.WriteLine($"Server: {session.Server.Name} ({session.Server.Address})");
 
     private async Task<int> LoginAsync(ServerSession session, string method, bool stdin, CancellationToken ct)
@@ -73,5 +71,5 @@ public sealed class AuthCommands(IServerConnector connector, ClientStartup start
         return result.State == BrowserLoginState.Completed && result.AuthStatus?.State == AuthState.Authenticated ? 0 : 1;
     }
 
-    private static void PrintStatus(AuthStatusReply status) => Console.WriteLine($"Mistral: {status.State} — {status.Message}");
+    private static void PrintStatus(AuthStatus status) => Console.WriteLine($"Mistral: {status.State} — {status.Message}");
 }

@@ -6,7 +6,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\VibeRe.Runtime\VibeRe.Runtime.csproj"/>
+        <ProjectReference Include="..\VibeRe.Client.Infrastructure\VibeRe.Client.Infrastructure.csproj"/>
     </ItemGroup>
 
 </Project>

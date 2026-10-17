@@ -1,6 +1,6 @@
 # VibeRe
 
-VibeRe runs provider authentication on the server. CLI, Avalonia desktop, and MAUI mobile use the same gRPC contract. `VibeRe.Client` is the transport-only library; `VibeRe.Runtime` shares startup, settings, and UI behavior. Clients can save multiple named servers and choose an active server. Each server owns its Mistral credentials; logging in from one client is visible to other clients connected to that server.
+VibeRe runs provider authentication on the server. CLI, Avalonia desktop, and MAUI mobile use the same gRPC contract. `VibeRe.Client.Application` shares startup, settings policy, and presentation state; `VibeRe.Client.Infrastructure` implements storage and server transport. Clients can save multiple named servers and choose an active server. Each server owns its Mistral credentials; logging in from one client is visible to other clients connected to that server.
 
 ## Run locally
 
@@ -89,8 +89,8 @@ For CLI, desktop, and server development, open `vibe-re.desktop.slnf` in your ID
 dotnet build VibeRe.Server
 dotnet build VibeRe.Cli
 dotnet build VibeRe.Desktop
-dotnet test VibeRe.Application.Tests
-dotnet test VibeRe.Infrastructure.Tests
+dotnet test VibeRe.Server.Application.Tests
+dotnet test VibeRe.Server.Infrastructure.Tests
 dotnet test VibeRe.Client.Tests
 dotnet test VibeRe.Cli.Tests
 dotnet test VibeRe.Server.Tests
@@ -100,7 +100,7 @@ The tests use fake Mistral HTTP responses, isolated SQLite databases, and fake s
 
 CLI and GUI share `ClientStartup`: read **ServerRequired**, connect to the selected server (starting only an opted-in local profile when needed), wait for readiness, then check its authentication. Turning off **Require a server at startup** in **Manage servers**, or running `servers required off`, skips automatic connection and authentication. Explicit login/status/refresh still connects to the selected server, without starting a local process. Existing client databases migrate with this preference enabled.
 
-Runtime services are registered through `AddVibeReRuntime`. Configuration storage, token storage, server connections, local process startup, readiness checks, and browser opening have explicit interfaces. The connection manager edits saved settings; the connector opens destination-scoped clients; the startup coordinator returns an initial authenticated or signed-out session; CLI parsing, auth commands, and server commands live in separate classes. Provider credential persistence and rollback are separate from authentication policy. Changing a server address rotates its credential identifier, so concurrent clients cannot read a new destination's token using an old connection snapshot.
+CLI, desktop, and mobile compose the client through `AddVibeReClient`. Configuration storage, token storage, server connections, local process startup, readiness checks, and browser opening have explicit interfaces. The connection manager edits saved settings; the connector opens destination-scoped clients; the startup coordinator returns an initial authenticated or signed-out session; CLI parsing, auth commands, and server commands live in separate classes. Provider credential persistence and rollback are separate from authentication policy. Changing a server address rotates its credential identifier, so concurrent clients cannot read a new destination's token using an old connection snapshot.
 
 Mobile development requires the .NET 10 SDK and matching MAUI workload. Install it with `dotnet workload install maui`, then reload the solution in the IDE. `dotnet workload list` should list `maui`. A missing platform workload can also produce `NETSDK1135` during IDE project loading because the target platform version cannot be inferred; install the workload rather than lowering the app's minimum supported OS version.
 
@@ -108,11 +108,16 @@ The mobile project targets Android on Windows/Linux and adds iOS on macOS. Build
 
 ## Configuration and settings
 
-`VibeRe.Client` only talks to the server: it accepts an address and access token, and exposes authentication operations. It has no configuration database, keyring, process-launching, browser, UI, or Runtime dependency.
+The projects separate application policy from IO on each side:
 
-`VibeRe.Runtime` owns the shared startup and settings orchestration. Its concrete SQLite, credential-store, process, readiness, and browser adapters are grouped under `Adapters`, behind the small IO interfaces used by the shared logic. `ClientConnectionDatabase` persists `ClientConfiguration` in SQLite. CLI and desktop reuse these adapters; mobile supplies its own browser/secure-storage implementations and app-data path through `AddVibeReRuntime`.
+- `VibeRe.Server.Application`: authentication use cases and the repository/secret-store contracts they need.
+- `VibeRe.Server.Infrastructure`: model-provider adapters, persistence, and credential-store implementations. The `VibeRe.Server` host composes these and exposes gRPC.
+- `VibeRe.Client.Application`: startup/login presentation state, settings policy, transport-independent authentication results, and small IO contracts. It has no database, process, filesystem, gRPC, or infrastructure dependency.
+- `VibeRe.Client.Infrastructure`: SQLite settings, keyring, browser/process/readiness adapters, and gRPC server transport. It depends on Client.Application, never the reverse. The former Client and Runtime projects are replaced by these two layers.
 
-Inject `VibeRe.Runtime.Configuration.IClientConfigurationStore` to read a snapshot:
+CLI and desktop reuse the infrastructure adapters. Mobile supplies its own browser/secure-storage implementations and app-data path at the host's `AddVibeReClient` call. Transport errors and cancellation are translated at the infrastructure boundary, so shared application and presentation code never handles gRPC exceptions. Provider credentials remain server-owned; these project moves do not change the database format or require data conversion. ACP is not implemented by this change.
+
+Inject `VibeRe.Client.Application.Configuration.IClientConfigurationStore` to read a snapshot:
 
 ```csharp
 var configuration = await configurations.LoadAsync(cancellationToken);

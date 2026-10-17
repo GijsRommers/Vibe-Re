@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-    <ItemGroup>
-        <ProjectReference Include="..\VibeRe.Client\VibeRe.Client.csproj" />
-        <PackageReference Include="Latchkey" Version="0.1.0" />
-        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-        <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
-    </ItemGroup>
-</Project>

@@ -62,7 +62,7 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0"/>
     </ItemGroup>
     <ItemGroup>
-        <ProjectReference Include="..\VibeRe.Runtime\VibeRe.Runtime.csproj"/>
+        <ProjectReference Include="..\VibeRe.Client.Infrastructure\VibeRe.Client.Infrastructure.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

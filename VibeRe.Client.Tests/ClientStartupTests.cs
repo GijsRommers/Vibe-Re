@@ -1,6 +1,5 @@
-using VibeRe.Runtime;
-using VibeRe.Runtime.Configuration;
-using VibeRe.Protocol;
+using VibeRe.Client.Application;
+using VibeRe.Client.Application.Configuration;
 
 namespace VibeRe.Client.Tests;
 
@@ -49,7 +48,7 @@ public sealed class ClientStartupTests
     {
         var calls = new List<string>();
         var error = new InvalidOperationException("Server unavailable.");
-        var client = new Client(calls, _ => Task.FromException<AuthStatusReply>(error));
+        var client = new Client(calls, _ => Task.FromException<AuthStatus>(error));
         var startup = new ClientStartup(new Configuration(ClientConfiguration.Default(), calls), new Connector(client, calls));
 
         Assert.Same(error, await Assert.ThrowsAsync<InvalidOperationException>(() => startup.StartAsync()));
@@ -80,7 +79,7 @@ public sealed class ClientStartupTests
         var client = new Client(calls, ct =>
         {
             cancellation.Cancel();
-            return Task.FromCanceled<AuthStatusReply>(ct);
+            return Task.FromCanceled<AuthStatus>(ct);
         });
         var startup = new ClientStartup(new Configuration(ClientConfiguration.Default(), calls), new Connector(client, calls));
 
@@ -119,19 +118,19 @@ public sealed class ClientStartupTests
         }
     }
 
-    private sealed class Client(List<string> calls, Func<CancellationToken, Task<AuthStatusReply>>? getStatus = null) : IVibeReClient
+    private sealed class Client(List<string> calls, Func<CancellationToken, Task<AuthStatus>>? getStatus = null) : IVibeReClient
     {
         public bool Disposed { get; private set; }
         public CancellationToken CancellationToken { get; private set; }
-        public Task<AuthStatusReply> GetStatusAsync(CancellationToken cancellationToken = default)
+        public Task<AuthStatus> GetStatusAsync(CancellationToken cancellationToken = default)
         {
             calls.Add("status");
             CancellationToken = cancellationToken;
-            return getStatus?.Invoke(cancellationToken) ?? Task.FromResult(new AuthStatusReply { State = AuthState.SignedOut });
+            return getStatus?.Invoke(cancellationToken) ?? Task.FromResult(new AuthStatus { State = AuthState.SignedOut });
         }
-        public Task<AuthStatusReply> LoginAsync(string apiKey, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<AuthStatusReply> LogoutAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<BrowserLoginReply> LoginWithBrowserAsync(Func<BrowserLoginReply, Task> showBrowser,
+        public Task<AuthStatus> LoginAsync(string apiKey, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AuthStatus> LogoutAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<BrowserLoginResult> LoginWithBrowserAsync(Func<BrowserLoginResult, Task> showBrowser,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public void Dispose() => Disposed = true;
     }

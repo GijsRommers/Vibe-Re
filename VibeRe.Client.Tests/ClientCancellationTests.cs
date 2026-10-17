@@ -1,16 +1,18 @@
+using VibeRe.Client.Infrastructure;
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http.Headers;
 using Google.Protobuf;
 using Grpc.Core;
-using VibeRe.Protocol;
+using VibeRe.Client.Application;
+using Protocol = VibeRe.Protocol;
 
 namespace VibeRe.Client.Tests;
 
 public sealed class ClientCancellationTests
 {
     [Fact]
-    public async Task CallerCancellationBoundsBrowserCleanupAndPreservesCanceledRpc()
+    public async Task CallerCancellationBoundsBrowserCleanupAndPreservesCallerCancellation()
     {
         using var handler = new LoginHandler();
         using var client = new VibeReClient("https://server.example", httpHandler: handler);
@@ -20,8 +22,9 @@ public sealed class ClientCancellationTests
 
         cancellation.Cancel();
 
-        var error = await Assert.ThrowsAsync<RpcException>(() => login.WaitAsync(TimeSpan.FromSeconds(8)));
-        Assert.Equal(StatusCode.Cancelled, error.StatusCode);
+        var error = await Assert.ThrowsAsync<OperationCanceledException>(() => login.WaitAsync(TimeSpan.FromSeconds(8)));
+        Assert.Equal(cancellation.Token, error.CancellationToken);
+        Assert.Equal(StatusCode.Cancelled, Assert.IsType<RpcException>(error.InnerException).StatusCode);
         Assert.Equal(1, handler.CleanupCalls);
         await handler.CleanupCanceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
@@ -66,11 +69,11 @@ public sealed class ClientCancellationTests
         {
             var method = request.RequestUri!.AbsolutePath.Split('/')[^1];
             if (method == "StartBrowserLogin")
-                return Reply(new BrowserLoginReply
+                return Reply(new Protocol.BrowserLoginReply
                 {
                     AttemptId = "attempt", SignInUrl = "https://console.mistral.ai/login",
                     ExpiresAtUnixSeconds = DateTimeOffset.UtcNow.AddMinutes(expired ? -1 : 5).ToUnixTimeSeconds(),
-                    State = BrowserLoginState.Waiting
+                    State = Protocol.BrowserLoginState.Waiting
                 });
 
             if (method == "PollBrowserLogin") PollStarted.TrySetResult();

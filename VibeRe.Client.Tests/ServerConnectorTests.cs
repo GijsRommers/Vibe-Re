@@ -1,6 +1,8 @@
-using VibeRe.Runtime;
-using VibeRe.Runtime.Adapters;
-using VibeRe.Runtime.Configuration;
+using VibeRe.Client.Infrastructure.Configuration;
+using VibeRe.Client.Infrastructure;
+using VibeRe.Client.Application;
+using VibeRe.Client.Infrastructure.Adapters;
+using VibeRe.Client.Application.Configuration;
 
 namespace VibeRe.Client.Tests;
 

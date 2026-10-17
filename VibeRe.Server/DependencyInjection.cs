@@ -1,13 +1,13 @@
 using Latchkey.Extensions.DependencyInjection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using VibeRe.Application.Secrets;
-using VibeRe.Infrastructure.Persistence;
-using VibeRe.Infrastructure.Persistence.Interceptors;
-using VibeRe.Infrastructure.Secrets;
-using VibeRe.Application.Providers.Auth;
-using VibeRe.Application.Providers.Profiles;
-using VibeRe.Infrastructure.Providers.Mistral.Auth;
+using VibeRe.Server.Application.Secrets;
+using VibeRe.Server.Infrastructure.Persistence;
+using VibeRe.Server.Infrastructure.Persistence.Interceptors;
+using VibeRe.Server.Infrastructure.Secrets;
+using VibeRe.Server.Application.Providers.Auth;
+using VibeRe.Server.Application.Providers.Profiles;
+using VibeRe.Server.Infrastructure.Providers.Mistral.Auth;
 
 namespace VibeRe.Server;
 

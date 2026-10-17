@@ -1,4 +1,4 @@
-using VibeRe.Runtime.Configuration;
+using VibeRe.Client.Application.Configuration;
 
 namespace VibeRe.Mobile;
 

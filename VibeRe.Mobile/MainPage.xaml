@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:client="clr-namespace:VibeRe.Runtime;assembly=VibeRe.Runtime"
+             xmlns:client="clr-namespace:VibeRe.Client.Application;assembly=VibeRe.Client.Application"
              x:Class="VibeRe.Mobile.MainPage" x:DataType="client:ConnectionSettingsViewModel" Title="VibeRe"
              BackgroundColor="#101010" Shell.NavBarIsVisible="False">
     <ContentPage.Resources>

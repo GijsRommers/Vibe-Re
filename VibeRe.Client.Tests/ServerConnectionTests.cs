@@ -1,7 +1,8 @@
-using VibeRe.Runtime;
-using VibeRe.Runtime.Adapters;
-using VibeRe.Runtime.Configuration;
-using VibeRe.Protocol;
+using VibeRe.Client.Infrastructure.Configuration;
+using VibeRe.Client.Infrastructure;
+using VibeRe.Client.Application;
+using VibeRe.Client.Infrastructure.Adapters;
+using VibeRe.Client.Application.Configuration;
 using Microsoft.Data.Sqlite;
 
 namespace VibeRe.Client.Tests;
@@ -231,7 +232,7 @@ public sealed class ServerConnectionTests : IDisposable
     [InlineData(AuthState.SubscriptionRequired, false)]
     [InlineData(AuthState.Unavailable, false)]
     public void LoginIsProposedOnlyWhenAuthenticationIsMissing(AuthState state, bool expected) =>
-        Assert.Equal(expected, VibeReClient.NeedsLogin(new() { State = state }));
+        Assert.Equal(expected, new AuthStatus { State = state }.NeedsLogin);
 
     public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }
 

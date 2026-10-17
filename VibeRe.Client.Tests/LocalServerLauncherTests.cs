@@ -1,7 +1,8 @@
-using VibeRe.Runtime.Adapters;
+using VibeRe.Client.Infrastructure.Configuration;
+using VibeRe.Client.Infrastructure.Adapters;
 using System.Net;
 using System.Net.Sockets;
-using VibeRe.Runtime.Configuration;
+using VibeRe.Client.Application.Configuration;
 
 namespace VibeRe.Client.Tests;
 

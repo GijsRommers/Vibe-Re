@@ -1,5 +1,5 @@
 using Grpc.Core;
-using VibeRe.Application.Providers.Auth;
+using VibeRe.Server.Application.Providers.Auth;
 using VibeRe.Protocol;
 
 namespace VibeRe.Server.Services;
