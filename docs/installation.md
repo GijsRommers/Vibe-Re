@@ -40,7 +40,12 @@ login; it does not mean startup failed. No .NET installation is required. Do not
 copy only the apphost executable: runtime, SQLite and Avalonia native files are
 required. Linux requires a graphical session for desktop and the usual .NET and
 Avalonia OS libraries (including X11, fontconfig and libICE/libSM); a working OS
-credential store is required for saving credentials. macOS artifacts are raw
+credential store must be available even for signed-out status checks. On Linux
+this requires `libsecret-1-0`, a D-Bus session and a Secret Service provider such
+as GNOME Keyring; bare SSH/service sessions usually lack these. CI provisions
+an isolated session and throwaway keyring, following
+[Latchkey's integration workflow](https://github.com/kerem-acer/latchkey/blob/a7a234846a5eeb8968d1ee7ba38db3e8ac1e1574/.github/workflows/ci.yml).
+There is no automatic plaintext-store fallback. macOS artifacts are raw
 binaries, not `.app`/DMG bundles, and are neither signed nor notarized. Their
 Gatekeeper behavior and native credential-store prompts need manual validation.
 There are no native Linux packages or automatic updater in this pipeline.
@@ -99,7 +104,8 @@ dotnet run --project build/SmokeTests -c Release -- --root artifacts/stage/win-x
 
 `Get-InnoSetup.ps1` downloads Inno Setup 6.7.3 from the publisher's GitHub release,
 verifies a pinned SHA-256 digest, and installs a private compiler under ignored
-`artifacts/tools`. It does not replace a machine-wide compiler. Alternatively,
+`artifacts/tools` in the publisher's portable mode, without file associations or
+uninstall registration. It does not replace a machine-wide compiler. Alternatively,
 pass your own Inno Setup 6.3+ `ISCC.exe` with `-IsccPath`. Review Inno Setup's
 license terms for your use.
 
@@ -118,7 +124,7 @@ CI runs real published apphosts from relocated paths containing spaces and an
 unrelated working directory. It tests CLI and desktop automatic server launch,
 standalone server launch, HTTP/2 readiness, file configuration, environment
 overrides, signed-out gRPC and token rejection without contacting Mistral. Linux
-desktop startup uses Xvfb. Windows also installs, reinstalls and uninstalls the
+desktop startup uses Xvfb plus a D-Bus session and GNOME Keyring. Windows also installs, reinstalls and uninstalls the
 generated EXE, checking the installed files and per-user registration. This is
 startup validation, not a full interactive UI or real-provider login test.
 

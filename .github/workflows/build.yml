@@ -54,7 +54,7 @@ jobs:
         run: |
           sudo apt-get update
           if ($LASTEXITCODE) { throw 'apt update failed.' }
-          sudo apt-get install -y xvfb libx11-6 libice6 libsm6 libfontconfig1
+          sudo apt-get install -y xvfb libx11-6 libice6 libsm6 libfontconfig1 libsecret-1-0 gnome-keyring dbus-x11
           if ($LASTEXITCODE) { throw 'Desktop prerequisites could not be installed.' }
       - name: Install Windows packaging compiler
         if: runner.os == 'Windows'
@@ -78,7 +78,7 @@ jobs:
       - name: Validate relocated published apps with virtual display
         if: runner.os == 'Linux'
         run: |
-          xvfb-run -a dotnet run --project build/SmokeTests -c Release -- --root artifacts/stage/linux-x64
+          dbus-run-session -- bash build/Test-LinuxPackage.sh
           if ($LASTEXITCODE) { throw 'Published smoke tests failed.' }
       - name: Validate Windows install, upgrade and uninstall
         if: runner.os == 'Windows'

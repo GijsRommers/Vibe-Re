@@ -98,6 +98,12 @@ try
         }
     }
 }
+catch
+{
+    var log = Path.Combine(temp, "server.log");
+    if (File.Exists(log)) Console.Error.WriteLine(await File.ReadAllTextAsync(log));
+    throw;
+}
 finally
 {
     StopBundledServers();
