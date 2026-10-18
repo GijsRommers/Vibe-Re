@@ -1,10 +1,15 @@
 using VibeRe.Server;
+using VibeRe.Lifecycle;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Globalization;
 using System.Threading.RateLimiting;
 using VibeRe.Contracts;
 using VibeRe.Server.Services;
+
+// A manually started or remote server has no managed registration or shutdown IPC.
+// Register before migrations/startup so an update can account for a server still starting.
+using var managedServer = ManagedServerRegistration.TryCreateFromEnvironment();
 
 // Managed clients can launch from any directory. Keep shipped settings and assets beside the host,
 // while still allowing a separate configuration directory (the packaging host uses the same rule).
@@ -53,6 +58,11 @@ builder.Services.AddRateLimiter(options =>
       policy.PermitLimit = 2048; policy.Window = TimeSpan.FromMinutes(1); policy.QueueLimit = 0; });
 });
 builder.Services.AddVibeReServices(builder.Configuration);
+if (managedServer is not null)
+{
+    builder.Services.AddSingleton(managedServer);
+    builder.Services.AddHostedService<ManagedServerLifetime>();
+}
 var app = builder.Build();
 
 await app.ApplyMigrationsAsync();

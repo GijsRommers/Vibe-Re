@@ -33,7 +33,7 @@ jobs:
           - os: macos-15
             rid: osx-arm64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 50
     defaults:
       run:
         shell: pwsh
@@ -54,7 +54,7 @@ jobs:
         run: |
           sudo apt-get update
           if ($LASTEXITCODE) { throw 'apt update failed.' }
-          sudo apt-get install -y xvfb libx11-6 libice6 libsm6 libfontconfig1 libsecret-1-0 gnome-keyring dbus-x11
+          sudo apt-get install -y xvfb libx11-6 libice6 libsm6 libfontconfig1 libsecret-1-0 gnome-keyring dbus-x11 squashfs-tools
           if ($LASTEXITCODE) { throw 'Desktop prerequisites could not be installed.' }
       - name: Install Windows packaging compiler
         if: runner.os == 'Windows'
@@ -67,7 +67,7 @@ jobs:
           BUILD_RID: ${{ matrix.rid }}
         run: |
           $version = if ($env:REQUESTED_VERSION) { $env:REQUESTED_VERSION } elseif ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { "0.1.0-ci.$env:GITHUB_RUN_NUMBER" }
-          ./build/Package.ps1 -Runtime $env:BUILD_RID -Version $version -WindowsInstaller:($IsWindows) -IsccPath $env:ISCC_PATH
+          ./build/Package.ps1 -Runtime $env:BUILD_RID -Version $version -Velopack -WindowsInstaller:($IsWindows) -IsccPath $env:ISCC_PATH
       - name: Validate relocated published apps
         if: runner.os != 'Linux'
         env:
@@ -83,6 +83,10 @@ jobs:
       - name: Validate Windows install, upgrade and uninstall
         if: runner.os == 'Windows'
         run: ./build/Test-Installer.ps1
+      - name: Validate native Velopack install and update
+        env:
+          BUILD_RID: ${{ matrix.rid }}
+        run: ./build/Test-Velopack.ps1 -Runtime $env:BUILD_RID
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -91,13 +95,14 @@ jobs:
           path: |
             artifacts/test-results/**/*.trx
             artifacts/installer-logs/*.log
+            artifacts/velopack-logs/**/*
           if-no-files-found: warn
           retention-days: 14
       - name: Upload validated release candidates
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vibe-re-${{ matrix.rid }}
-          path: artifacts/packages/${{ matrix.rid }}/*
+          path: artifacts/packages/${{ matrix.rid }}/**/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

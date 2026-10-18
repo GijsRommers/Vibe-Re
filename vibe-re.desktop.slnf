@@ -20,7 +20,12 @@
       "VibeRe.Client.Application\\VibeRe.Client.Application.csproj",
       "VibeRe.Client.SignalR\\VibeRe.Client.SignalR.csproj",
       "VibeRe.Web\\VibeRe.Web.csproj",
-      "VibeRe.Web.Tests\\VibeRe.Web.Tests.csproj"
+      "VibeRe.Web.Tests\\VibeRe.Web.Tests.csproj",
+      "VibeRe.Lifecycle\\VibeRe.Lifecycle.csproj",
+      "VibeRe.Updates\\VibeRe.Updates.csproj",
+      "VibeRe.Updates.Tests\\VibeRe.Updates.Tests.csproj",
+      "VibeRe.Desktop.Tests\\VibeRe.Desktop.Tests.csproj",
+      "VibeRe.Lifecycle.Tests\\VibeRe.Lifecycle.Tests.csproj"
     ]
   }
 }

@@ -2,4 +2,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../VibeRe.Lifecycle/VibeRe.Lifecycle.csproj" />
+  </ItemGroup>
 </Project>

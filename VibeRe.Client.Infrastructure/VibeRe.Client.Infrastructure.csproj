@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <ItemGroup>
+        <ProjectReference Include="..\VibeRe.Lifecycle\VibeRe.Lifecycle.csproj" />
         <ProjectReference Include="..\VibeRe.Client.Application\VibeRe.Client.Application.csproj" />
         <ProjectReference Include="..\VibeRe.Client.SignalR\VibeRe.Client.SignalR.csproj" />
         <ProjectReference Include="..\VibeRe.Contracts\VibeRe.Contracts.csproj" />

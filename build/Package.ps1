@@ -3,10 +3,15 @@ param(
     [Parameter(Mandatory)][ValidateSet('win-x64', 'linux-x64', 'osx-arm64', 'osx-x64')][string]$Runtime,
     [ValidatePattern('^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$')][string]$Version = '0.1.0-dev',
     [switch]$WindowsInstaller,
+    [switch]$Velopack,
     [string]$IsccPath
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
+if ($Velopack -and ($Runtime -notin @('win-x64', 'linux-x64', 'osx-arm64') -or
+        [Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier -ne $Runtime)) {
+    throw 'Velopack requires a native Windows x64, Linux x64 or macOS ARM64 build. Omit -Velopack for cross-published legacy archives.'
+}
 $stage = "$repo/artifacts/stage/$Runtime"
 $dist = "$repo/artifacts/packages/$Runtime"
 if ($WindowsInstaller -and ($Runtime -ne 'win-x64' -or $env:OS -ne 'Windows_NT')) {
@@ -53,6 +58,9 @@ try {
         $numericVersion = $Version.Split('-')[0]
         & $IsccPath "/DAppVersion=$Version" "/DAppNumericVersion=$numericVersion" "/DSourceDir=$stage" "/DOutputDir=$dist" "$repo/packaging/windows/VibeRe.iss"
         if ($LASTEXITCODE) { throw 'Installer compilation failed.' }
+    }
+    if ($Velopack) {
+        & "$PSScriptRoot/Package-Velopack.ps1" -Runtime $Runtime -Version $Version
     }
     Get-ChildItem -LiteralPath $dist -File | Sort-Object Name | ForEach-Object {
         '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name

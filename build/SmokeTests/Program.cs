@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+using VibeRe.Lifecycle;
 
 // Exercise real apphosts, outside the source tree, with no provider credentials.
 if (args.Length != 2 || args[0] is not ("--root" or "--installed-root"))
@@ -95,7 +96,46 @@ try
                 await Task.Delay(1500);
                 Require(!desktop.HasExited, "Desktop exited during startup");
             }
+            if (app == "server")
+            {
+                var blocked = false;
+                try { await using var lease = await new ManagedServerShutdownGuard(serverDir).AcquireUpdateLeaseAsync(); }
+                catch (InvalidOperationException) { blocked = true; }
+                Require(blocked, "Updater must block for a manually started server rather than replace its running files");
+                await Ready(address);
+            }
+            else
+            {
+                // Real installed apphosts must support safe quiesce; a client exiting alone does not stop its server.
+                if (desktop is not null)
+                {
+                    desktop.Kill(entireProcessTree: false);
+                    await desktop.WaitForExitAsync();
+                    desktop.Dispose();
+                    desktop = null;
+                }
+                await Ready(address);
+                await using (var lease = await new ManagedServerShutdownGuard(Path.Combine(root, app)).AcquireUpdateLeaseAsync())
+                {
+                    using var stopped = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
+                    var stillReady = false;
+                    try { using var response = await stopped.GetAsync(address + "/.well-known/vibe-re/server"); stillReady = response.IsSuccessStatusCode; }
+                    catch (HttpRequestException) { }
+                    catch (TaskCanceledException) { }
+                    Require(!stillReady, "Managed server remained live during update reservation");
+                    if (app == "cli") await Run(cli, ["--help"], 1, "update");
+                }
+                // Disposing an un-applied update lease releases startup and preserves the same settings/data.
+                if (app == "desktop")
+                {
+                    desktop = Start(Path.Combine(root, app, "VibeRe.Desktop" + suffix), []);
+                    Drain(desktop);
+                    await Ready(address);
+                }
+                await Run(cli, ["auth", "status"], 1, "Mistral: SignedOut");
+            }
             Console.WriteLine($"PASS: {app} published startup, SignalR readiness v2, web assets, configuration and token access");
+            Console.WriteLine($"PASS: {app} update ownership, graceful managed shutdown and restart safety");
         }
         finally
         {
