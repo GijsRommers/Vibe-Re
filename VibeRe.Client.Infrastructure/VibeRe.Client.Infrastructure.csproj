@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <ItemGroup>
         <ProjectReference Include="..\VibeRe.Client.Application\VibeRe.Client.Application.csproj" />
-        <ProjectReference Include="..\VibeRe.Protocol\VibeRe.Protocol.csproj" />
-        <PackageReference Include="Grpc.Net.Client" Version="2.84.0" />
+        <ProjectReference Include="..\VibeRe.Contracts\VibeRe.Contracts.csproj" />
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
         <PackageReference Include="Latchkey" Version="0.1.0" />
         <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
     </ItemGroup>
 </Project>

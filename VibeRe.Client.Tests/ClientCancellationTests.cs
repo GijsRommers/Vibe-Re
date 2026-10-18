@@ -1,11 +1,6 @@
-using VibeRe.Client.Infrastructure;
-using System.Buffers.Binary;
-using System.Net;
-using System.Net.Http.Headers;
-using Google.Protobuf;
-using Grpc.Core;
+using System.Diagnostics;
 using VibeRe.Client.Application;
-using Protocol = VibeRe.Protocol;
+using Protocol = VibeRe.Contracts;
 
 namespace VibeRe.Client.Tests;
 
@@ -14,94 +9,70 @@ public sealed class ClientCancellationTests
     [Fact]
     public async Task CallerCancellationBoundsBrowserCleanupAndPreservesCallerCancellation()
     {
-        using var handler = new LoginHandler();
-        using var client = new VibeReClient("https://server.example", httpHandler: handler);
+        var watchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var server = UnresponsiveCleanupServer();
+        server.Scenario.Watch = (_, ct) => TestAuthScenario.WaitForCancellation(watchStarted, ct);
+        using var client = server.CreateClient();
         using var cancellation = new CancellationTokenSource();
         var login = client.LoginWithBrowserAsync(_ => Task.CompletedTask, cancellation.Token);
-        await handler.PollStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await watchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var elapsed = Stopwatch.StartNew();
 
         cancellation.Cancel();
 
-        var error = await Assert.ThrowsAsync<OperationCanceledException>(() => login.WaitAsync(TimeSpan.FromSeconds(8)));
+        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => login.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(cancellation.Token, error.CancellationToken);
-        Assert.Equal(StatusCode.Cancelled, Assert.IsType<RpcException>(error.InnerException).StatusCode);
-        Assert.Equal(1, handler.CleanupCalls);
-        await handler.CleanupCanceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        AssertBoundedCleanup(server, elapsed);
     }
 
     [Fact]
     public async Task BrowserFailureSurvivesUnresponsiveCleanup()
     {
-        using var handler = new LoginHandler();
-        using var client = new VibeReClient("https://server.example", httpHandler: handler);
+        using var server = UnresponsiveCleanupServer();
+        using var client = server.CreateClient();
         var original = new InvalidOperationException("Browser callback failed.");
+        var elapsed = Stopwatch.StartNew();
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            client.LoginWithBrowserAsync(_ => Task.FromException(original)).WaitAsync(TimeSpan.FromSeconds(8)));
+            client.LoginWithBrowserAsync(_ => Task.FromException(original)).WaitAsync(TimeSpan.FromSeconds(5)));
 
         Assert.Same(original, error);
-        Assert.Equal(1, handler.CleanupCalls);
-        Assert.False(handler.PollStarted.Task.IsCompleted);
-        await handler.CleanupCanceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        AssertBoundedCleanup(server, elapsed);
+        Assert.Empty(server.Scenario.WatchedAttempts);
     }
 
     [Fact]
     public async Task ExpiredAttemptReturnsExpiredAfterOneBoundedCleanup()
     {
-        using var handler = new LoginHandler(expired: true);
-        using var client = new VibeReClient("https://server.example", httpHandler: handler);
+        using var server = UnresponsiveCleanupServer();
+        server.Scenario.Start = _ => Task.FromResult(TestAuthScenario.StartedAttempt() with
+        {
+            ExpiresAtUnixSeconds = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds()
+        });
+        using var client = server.CreateClient();
+        var elapsed = Stopwatch.StartNew();
 
-        var result = await client.LoginWithBrowserAsync(_ => Task.CompletedTask).WaitAsync(TimeSpan.FromSeconds(8));
+        var result = await client.LoginWithBrowserAsync(_ => Task.CompletedTask).WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(BrowserLoginState.Expired, result.State);
-        Assert.Equal(1, handler.CleanupCalls);
-        Assert.False(handler.PollStarted.Task.IsCompleted);
-        await handler.CleanupCanceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        AssertBoundedCleanup(server, elapsed);
+        Assert.Empty(server.Scenario.WatchedAttempts);
     }
 
-    private sealed class LoginHandler(bool expired = false) : HttpMessageHandler
+    private static SignalRTestServer UnresponsiveCleanupServer() => new(new()
     {
-        public TaskCompletionSource PollStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource CleanupCanceled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public int CleanupCalls { get; private set; }
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        Cancel = async (_, ct) =>
         {
-            var method = request.RequestUri!.AbsolutePath.Split('/')[^1];
-            if (method == "StartBrowserLogin")
-                return Reply(new Protocol.BrowserLoginReply
-                {
-                    AttemptId = "attempt", SignInUrl = "https://console.mistral.ai/login",
-                    ExpiresAtUnixSeconds = DateTimeOffset.UtcNow.AddMinutes(expired ? -1 : 5).ToUnixTimeSeconds(),
-                    State = Protocol.BrowserLoginState.Waiting
-                });
-
-            if (method == "PollBrowserLogin") PollStarted.TrySetResult();
-            else if (method == "CancelBrowserLogin") CleanupCalls++;
-            else throw new InvalidOperationException($"Unexpected RPC: {method}");
-
-            try { await Task.Delay(Timeout.Infinite, ct); }
-            finally
-            {
-                if (method == "CancelBrowserLogin" && ct.IsCancellationRequested) CleanupCanceled.TrySetResult();
-            }
-            throw new InvalidOperationException("The unresponsive RPC should only end through cancellation.");
+            // Unary SignalR cancellation stops the client wait, not the server
+            // method. Connection disposal releases this deliberately stuck work.
+            await Task.Delay(Timeout.Infinite, ct);
+            return new Protocol.BrowserLoginReply();
         }
+    });
 
-        private static HttpResponseMessage Reply(IMessage message)
-        {
-            var payload = message.ToByteArray();
-            var frame = new byte[payload.Length + 5];
-            BinaryPrimitives.WriteInt32BigEndian(frame.AsSpan(1, 4), payload.Length);
-            payload.CopyTo(frame, 5);
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Version = HttpVersion.Version20,
-                Content = new ByteArrayContent(frame)
-            };
-            response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/grpc");
-            response.TrailingHeaders.Add("grpc-status", "0");
-            return response;
-        }
+    private static void AssertBoundedCleanup(SignalRTestServer server, Stopwatch elapsed)
+    {
+        Assert.Equal("attempt", Assert.Single(server.Scenario.CanceledAttempts));
+        Assert.InRange(elapsed.Elapsed, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5));
     }
 }

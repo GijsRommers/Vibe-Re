@@ -19,6 +19,6 @@ public sealed record BrowserLoginResult
     public AuthStatus? AuthStatus { get; init; }
 }
 
-// Transport adapters translate failures into an application error; callers need no gRPC types.
+// Transport adapters translate failures into an application error; callers need no transport types.
 public sealed class ServerConnectionException(string message, Exception? innerException = null)
     : Exception(message, innerException);

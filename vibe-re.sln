@@ -8,7 +8,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Desktop", "VibeRe.De
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Cli", "VibeRe.Cli\VibeRe.Cli.csproj", "{CA5AA096-F268-4C16-A42F-A886C9641ED1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Protocol", "VibeRe.Protocol\VibeRe.Protocol.csproj", "{EF7AB8EF-76C8-4B92-A06B-8EACAACB1939}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Contracts", "VibeRe.Contracts\VibeRe.Contracts.csproj", "{EF7AB8EF-76C8-4B92-A06B-8EACAACB1939}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Client.Infrastructure", "VibeRe.Client.Infrastructure\VibeRe.Client.Infrastructure.csproj", "{838A1A2B-1149-4A57-B506-A6E6B48C3FE3}"
 EndProject

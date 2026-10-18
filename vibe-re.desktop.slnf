@@ -12,7 +12,7 @@
       "VibeRe.Domain\\VibeRe.Domain.csproj",
       "VibeRe.Server.Infrastructure\\VibeRe.Server.Infrastructure.csproj",
       "VibeRe.Server.Infrastructure.Tests\\VibeRe.Server.Infrastructure.Tests.csproj",
-      "VibeRe.Protocol\\VibeRe.Protocol.csproj",
+      "VibeRe.Contracts\\VibeRe.Contracts.csproj",
       "VibeRe.Server\\VibeRe.Server.csproj",
       "VibeRe.Server.Tests\\VibeRe.Server.Tests.csproj",
       "VibeRe.Tools\\VibeRe.Tools.csproj",
