@@ -42,7 +42,7 @@ public sealed class ManagedServerShutdownTests : IDisposable
     public async Task OtherCliOrUserManagedServerBlocksBeforeAnyManagedServerStops()
     {
         AddServer();
-        processes.UsingInstallation.Add(new(999, 13, Path.Combine(state.InstallationDirectory, "server", "vibe-re-server")));
+        processes.UsingInstallation.Add(new(999, "utc:13", Path.Combine(state.InstallationDirectory, "server", "vibe-re-server")));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => Guard().AcquireUpdateLeaseAsync());
         Assert.Contains("user-managed", error.Message);
         Assert.Empty(shutdown.Requests);
@@ -59,7 +59,7 @@ public sealed class ManagedServerShutdownTests : IDisposable
         var server = AddServer();
         var identity = processes.Live[server.ProcessId];
         if (mismatch == "pid") processes.Live[server.ProcessId] = identity with { ProcessId = 999 };
-        if (mismatch == "start") processes.Live[server.ProcessId] = identity with { StartTimeUtcTicks = identity.StartTimeUtcTicks + 1 };
+        if (mismatch == "start") processes.Live[server.ProcessId] = identity with { StartIdentity = identity.StartIdentity + "-different" };
         if (mismatch == "path") processes.Live[server.ProcessId] = identity with { ExecutablePath = Path.Combine(root, "unmanaged-server") };
         if (mismatch == "installation") state.Write(state.DescriptorPath(server.PipeName), server with { InstallationId = "other-installation" });
         await Assert.ThrowsAsync<InvalidOperationException>(() => Guard().AcquireUpdateLeaseAsync());
@@ -93,7 +93,7 @@ public sealed class ManagedServerShutdownTests : IDisposable
     {
         var pipe = NewPipe();
         state.Write(state.PendingPath(pipe), new PendingServerLaunch(1, state.InstallationId, pipe,
-            Path.Combine(state.InstallationDirectory, "server"), 100, 1));
+            Path.Combine(state.InstallationDirectory, "server"), 100, "utc:1"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => Guard().AcquireUpdateLeaseAsync());
         Assert.Empty(shutdown.Requests);
         Assert.True(File.Exists(state.PendingPath(pipe)));
@@ -105,7 +105,7 @@ public sealed class ManagedServerShutdownTests : IDisposable
     {
         var pipe = NewPipe();
         state.Write(state.PendingPath(pipe), new PendingServerLaunch(1, state.InstallationId, pipe,
-            Path.Combine(state.InstallationDirectory, "server"), 100, 1, 101, 2));
+            Path.Combine(state.InstallationDirectory, "server"), 100, "utc:1", 101, "utc:2"));
         await using var lease = await Guard().AcquireUpdateLeaseAsync();
         Assert.False(File.Exists(state.PendingPath(pipe)));
     }
@@ -188,7 +188,7 @@ public sealed class ManagedServerShutdownTests : IDisposable
     {
         var other = new ManagedServerState(Path.Combine(root, "other-install"), Path.Combine(root, "state"), "", "");
         var descriptor = new ManagedServerDescriptor(1, other.InstallationId, other.InstallationDirectory,
-            NewPipe(), 101, 12, Path.Combine(other.InstallationDirectory, "server"));
+            NewPipe(), 101, "utc:12", Path.Combine(other.InstallationDirectory, "server"));
         other.Write(other.DescriptorPath(descriptor.PipeName), descriptor);
         await using var lease = await Guard().AcquireUpdateLeaseAsync();
         Assert.Empty(shutdown.Requests);
@@ -200,7 +200,7 @@ public sealed class ManagedServerShutdownTests : IDisposable
     public async Task SameUserPipeRequestsOnlyExpectedProcessShutdown()
     {
         var descriptor = new ManagedServerDescriptor(1, state.InstallationId, state.InstallationDirectory,
-            NewPipe(), 101, 12, Path.Combine(state.InstallationDirectory, "server"));
+            NewPipe(), 101, "utc:12", Path.Combine(state.InstallationDirectory, "server"));
         using var pipe = ManagedServerRegistration.CreatePipe(descriptor.PipeName);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var requested = false;
@@ -215,7 +215,7 @@ public sealed class ManagedServerShutdownTests : IDisposable
     public async Task PipeRejectsWrongProcessIdentityAndAcceptsLaterValidRequest()
     {
         var descriptor = new ManagedServerDescriptor(1, state.InstallationId, state.InstallationDirectory,
-            NewPipe(), 101, 12, Path.Combine(state.InstallationDirectory, "server"));
+            NewPipe(), 101, "utc:12", Path.Combine(state.InstallationDirectory, "server"));
         using var pipe = ManagedServerRegistration.CreatePipe(descriptor.PipeName);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var requested = false;
@@ -240,7 +240,7 @@ public sealed class ManagedServerShutdownTests : IDisposable
         var identity = new ManagedProcessInspector().Inspect(Environment.ProcessId);
         Assert.NotNull(identity);
         Assert.Equal(Environment.ProcessId, identity.ProcessId);
-        Assert.True(identity.StartTimeUtcTicks > 0);
+        Assert.False(string.IsNullOrWhiteSpace(identity.StartIdentity));
         Assert.True(File.Exists(identity.ExecutablePath));
     }
 
@@ -335,13 +335,136 @@ public sealed class ManagedServerShutdownTests : IDisposable
         Assert.True(File.Exists(state.UpdatePath));
     }
 
+    [Fact]
+    public void SymlinkedParentAndPhysicalInstallationHaveOneIdentity()
+    {
+        Directory.CreateDirectory(state.InstallationDirectory);
+        var alias = Path.Combine(root, "alias-parent");
+        Directory.CreateSymbolicLink(alias, root);
+        var viaAlias = new ManagedServerState(Path.Combine(alias, "installation"), Path.Combine(root, "state"), "", "");
+        Assert.Equal(state.InstallationDirectory, viaAlias.InstallationDirectory);
+        Assert.Equal(state.InstallationId, viaAlias.InstallationId);
+        Assert.Equal(state.DirectoryPath, viaAlias.DirectoryPath);
+        Assert.True(ManagedServerState.IsWithin(Path.Combine(alias, "installation", "server", "vibe-re-server"), state.InstallationDirectory));
+    }
+
+    [Fact]
+    public async Task GuardViaSymlinkedParentFindsAndStopsSameOwnedServer()
+    {
+        Directory.CreateDirectory(state.InstallationDirectory);
+        var descriptor = AddServer();
+        var alias = Path.Combine(root, "alias-parent");
+        Directory.CreateSymbolicLink(alias, root);
+        var viaAlias = new ManagedServerState(Path.Combine(alias, "installation"), Path.Combine(root, "state"), "", "");
+        await using var lease = await new ManagedServerShutdownGuard(viaAlias, processes, shutdown, TimeSpan.FromSeconds(2)).AcquireUpdateLeaseAsync();
+        Assert.Equal([descriptor.ProcessId], shutdown.Requests);
+        Assert.Equal([descriptor.ProcessId], processes.Waited);
+    }
+
+    [Fact]
+    public void SymlinkInsideInstallationCannotEnrollAnOutsideExecutable()
+    {
+        Directory.CreateDirectory(state.InstallationDirectory);
+        var outside = Path.Combine(root, "outside");
+        Directory.CreateDirectory(outside);
+        var alias = Path.Combine(state.InstallationDirectory, "linked-server");
+        Directory.CreateSymbolicLink(alias, outside);
+        var executable = Path.Combine(alias, "vibe-re-server");
+        Assert.False(ManagedServerState.IsWithin(executable, state.InstallationDirectory));
+        Assert.Throws<InvalidOperationException>(() => new ManagedServerLaunch(state, executable));
+    }
+
+    [Fact]
+    public void ChainedAndRelativeAncestorLinksAreCanonicalized()
+    {
+        var target = Path.Combine(root, "physical");
+        Directory.CreateDirectory(target);
+        var first = Path.Combine(root, "first-alias");
+        var second = Path.Combine(root, "second-alias");
+        Directory.CreateSymbolicLink(first, "physical");
+        Directory.CreateSymbolicLink(second, first);
+        Assert.Equal(ManagedServerState.Normalize(Path.Combine(target, "absent", "server")),
+            ManagedServerState.Normalize(Path.Combine(second, "absent", "server")));
+    }
+
+    [Fact]
+    public void LinuxStartIdentityParsesKernelTicksAfterComplexCommandName()
+    {
+        var fields = Enumerable.Range(3, 20).Select(field => field == 3 ? "S" : field == 22 ? "123456789" : "0");
+        var stat = "101 (server (test) with spaces\nand newline) " + string.Join(' ', fields) + " 999 1000\n";
+        Assert.Equal(123456789L, ManagedProcessStartIdentity.ParseLinuxStat(stat, 101));
+    }
+
+    [Theory]
+    [InlineData("999 (server) S 0 0 0", 101)]
+    [InlineData("101 malformed", 101)]
+    [InlineData("101 (server) S 0 0 0", 101)]
+    public void LinuxStartIdentityRejectsMalformedOrDifferentProcess(string stat, int expectedProcessId)
+        => Assert.Throws<InvalidOperationException>(() => ManagedProcessStartIdentity.ParseLinuxStat(stat, expectedProcessId));
+
+    [Fact]
+    public void CurrentProcessCreationIdentityIsStableAcrossSeparateProcessObjects()
+    {
+        using var first = Process.GetCurrentProcess();
+        using var second = Process.GetProcessById(first.Id);
+        Assert.Equal(ManagedProcessStartIdentity.Read(first), ManagedProcessStartIdentity.Read(second));
+    }
+
+    [Fact]
+    public void LinuxCreationIdentityDistinguishesRebootsWithSamePidAndStartTicks()
+    {
+        var oldBoot = ManagedProcessStartIdentity.CreateLinuxIdentity("39e180a3-50c0-4967-b99d-4cef4a5c8797", 12345);
+        var newBoot = ManagedProcessStartIdentity.CreateLinuxIdentity("9f2ba8d6-e2fb-4d38-97da-408f95ab5674", 12345);
+        Assert.NotEqual(oldBoot, newBoot);
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("not-a-number")]
+    [InlineData("9223372036854775808")]
+    public void LinuxStartIdentityRejectsInvalidKernelToken(string invalidTicks)
+    {
+        var fields = Enumerable.Range(3, 20).Select(field => field == 3 ? "S" : field == 22 ? invalidTicks : "0");
+        var stat = "101 (server) " + string.Join(' ', fields);
+        Assert.Throws<InvalidOperationException>(() => ManagedProcessStartIdentity.ParseLinuxStat(stat, 101));
+    }
+
+    [Fact]
+    public void LinuxMissingProcessFileRemainsAnExitedProcessSignal()
+    {
+        Assert.Throws<FileNotFoundException>(() => ManagedProcessStartIdentity.ReadLinuxProcessIdentity(101,
+            "39e180a3-50c0-4967-b99d-4cef4a5c8797", _ => throw new FileNotFoundException()));
+        Assert.Throws<DirectoryNotFoundException>(() => ManagedProcessStartIdentity.ReadLinuxProcessIdentity(101,
+            "39e180a3-50c0-4967-b99d-4cef4a5c8797", _ => throw new DirectoryNotFoundException()));
+    }
+
+    [Fact]
+    public void LinuxUnreadableProcessFileFailsClosedInsteadOfPretendingProcessExited()
+    {
+        Assert.Throws<InvalidOperationException>(() => ManagedProcessStartIdentity.ReadLinuxProcessIdentity(101,
+            "39e180a3-50c0-4967-b99d-4cef4a5c8797", _ => throw new UnauthorizedAccessException()));
+        Assert.Throws<InvalidOperationException>(() => ManagedProcessStartIdentity.ReadLinuxProcessIdentity(101,
+            "39e180a3-50c0-4967-b99d-4cef4a5c8797", _ => throw new IOException("I/O error")));
+    }
+
+    [Fact]
+    public void FirstRunCreatesMissingApplicationDataParentsAndPrivateState()
+    {
+        var appData = Path.Combine(root, "fresh-app-data", "nested");
+        Assert.False(Directory.Exists(appData));
+        var fresh = new ManagedServerState(state.InstallationDirectory, Path.Combine(appData, "VibeRe", "managed-servers"), "", "");
+        Assert.True(Directory.Exists(fresh.DirectoryPath));
+        if (!OperatingSystem.IsWindows())
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(fresh.DirectoryPath));
+    }
+
     private ManagedServerShutdownGuard Guard(TimeSpan? timeout = null) => new(state, processes, shutdown, timeout ?? TimeSpan.FromSeconds(2));
     private ManagedServerDescriptor AddServer()
     {
         var descriptor = new ManagedServerDescriptor(1, state.InstallationId, state.InstallationDirectory,
-            NewPipe(), 101, 12, Path.Combine(state.InstallationDirectory, "server"));
+            NewPipe(), 101, "utc:12", Path.Combine(state.InstallationDirectory, "server"));
         state.Write(state.DescriptorPath(descriptor.PipeName), descriptor);
-        var identity = new ManagedProcessIdentity(descriptor.ProcessId, descriptor.StartTimeUtcTicks, descriptor.ExecutablePath);
+        var identity = new ManagedProcessIdentity(descriptor.ProcessId, descriptor.StartIdentity, descriptor.ExecutablePath);
         processes.Live[identity.ProcessId] = identity;
         processes.UsingInstallation.Add(identity);
         return descriptor;

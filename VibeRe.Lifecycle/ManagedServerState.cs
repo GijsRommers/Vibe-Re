@@ -44,7 +44,9 @@ internal sealed class ManagedServerState
 
     private static string DefaultStateRoot()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        // On a fresh Unix account the configured app-data directory may not exist yet.
+        // Resolve its location without requiring existence; EnsurePrivateDirectory creates our state.
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.DoNotVerify);
         if (string.IsNullOrWhiteSpace(appData) || !Path.IsPathFullyQualified(appData))
             throw new InvalidOperationException("The current user's application-data directory is unavailable. Local startup and updates cannot safely continue.");
         return Path.Combine(appData, "VibeRe", "managed-servers");
@@ -61,9 +63,58 @@ internal sealed class ManagedServerState
         return fullPath;
     }
 
-    internal static string Normalize(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
-    internal static bool IsWithin(string path, string directory) => Normalize(path).Equals(Normalize(directory), PathComparison)
-        || Normalize(path).StartsWith(Normalize(directory) + Path.DirectorySeparatorChar, PathComparison);
+    internal static string Normalize(string path)
+    {
+        // GetFullPath alone is lexical: on macOS /var and /private/var are aliases, and
+        // launcher, process inspection, and updater can observe different spellings.
+        // Resolve every existing ancestor, not just a symlink at the final path segment.
+        var remainingLinks = 64;
+        return Canonicalize(Path.GetFullPath(path), ref remainingLinks);
+    }
+
+    private static string Canonicalize(string path, ref int remainingLinks)
+    {
+        path = RemoveExtendedWindowsPrefix(Path.GetFullPath(path));
+        var root = Path.GetPathRoot(path) ?? throw new InvalidOperationException("The application path has no filesystem root.");
+        var parts = path[root.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        var current = root;
+        for (var index = 0; index < parts.Length; index++)
+        {
+            current = Path.Combine(current, parts[index]);
+            FileAttributes attributes;
+            try { attributes = File.GetAttributes(current); }
+            catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+            {
+                // Launch reservations and tests can refer to a not-yet-created trailing path.
+                // Its existing ancestors have already been canonicalized.
+                for (index++; index < parts.Length; index++) current = Path.Combine(current, parts[index]);
+                return Path.TrimEndingDirectorySeparator(current);
+            }
+            if ((attributes & FileAttributes.ReparsePoint) == 0) continue;
+            if (--remainingLinks < 0) throw new InvalidOperationException("The application path contains too many symbolic links.");
+            var target = (attributes & FileAttributes.Directory) != 0
+                ? Directory.ResolveLinkTarget(current, returnFinalTarget: true)
+                : File.ResolveLinkTarget(current, returnFinalTarget: true);
+            if (target is null) throw new InvalidOperationException("An application path link could not be verified.");
+            current = Canonicalize(target.FullName, ref remainingLinks);
+        }
+        return Path.TrimEndingDirectorySeparator(current);
+    }
+
+    private static string RemoveExtendedWindowsPrefix(string path)
+    {
+        if (!OperatingSystem.IsWindows()) return path;
+        if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) return @"\\" + path[8..];
+        if (path.StartsWith(@"\\?\", StringComparison.Ordinal) && path.Length > 6 && path[5] == ':') return path[4..];
+        return path;
+    }
+    internal static bool IsWithin(string path, string directory)
+    {
+        var canonicalPath = Normalize(path);
+        var canonicalDirectory = Normalize(directory);
+        var prefix = Path.EndsInDirectorySeparator(canonicalDirectory) ? canonicalDirectory : canonicalDirectory + Path.DirectorySeparatorChar;
+        return canonicalPath.Equals(canonicalDirectory, PathComparison) || canonicalPath.StartsWith(prefix, PathComparison);
+    }
     internal static string ValidatePipe(string pipe)
     {
         if (!pipe.StartsWith("vibere-", StringComparison.Ordinal) || pipe.Length != 39 || pipe[7..].Any(c => !Uri.IsHexDigit(c)))
@@ -149,12 +200,12 @@ internal sealed class ManagedServerState
 }
 
 internal sealed record ManagedServerDescriptor(int Protocol, string InstallationId, string InstallationDirectory,
-    string PipeName, int ProcessId, long StartTimeUtcTicks, string ExecutablePath);
+    string PipeName, int ProcessId, string StartIdentity, string ExecutablePath);
 internal sealed record PendingServerLaunch(int Protocol, string InstallationId, string PipeName, string ExpectedExecutable,
-    int LauncherProcessId, long LauncherStartTimeUtcTicks, int? ProcessId = null, long? StartTimeUtcTicks = null);
+    int LauncherProcessId, string LauncherStartIdentity, int? ProcessId = null, string? StartIdentity = null);
 internal sealed record PendingApplicationUpdate(int Protocol, string InstallationId, string BuildIdentity, string LeaseId);
 
-internal sealed record ManagedProcessIdentity(int ProcessId, long StartTimeUtcTicks, string ExecutablePath);
+internal sealed record ManagedProcessIdentity(int ProcessId, string StartIdentity, string ExecutablePath);
 internal interface IManagedProcessInspector
 {
     ManagedProcessIdentity? Inspect(int processId);
@@ -170,11 +221,17 @@ internal sealed class ManagedProcessInspector : IManagedProcessInspector
         {
             using var process = Process.GetProcessById(processId);
             if (process.HasExited) return null;
+            var startIdentity = ManagedProcessStartIdentity.Read(process);
             var path = process.MainModule?.FileName;
             if (string.IsNullOrWhiteSpace(path)) throw new InvalidOperationException("The local server executable could not be verified. Close it yourself before updating.");
-            return new(process.Id, process.StartTime.ToUniversalTime().Ticks, ManagedServerState.Normalize(path));
+            var executable = ManagedServerState.Normalize(path);
+            if (startIdentity != ManagedProcessStartIdentity.Read(process))
+                throw new InvalidOperationException("The local server process changed while its identity was being verified. Try the update again.");
+            return new(process.Id, startIdentity, executable);
         }
         catch (ArgumentException) { return null; }
+        catch (FileNotFoundException) { return null; } // Exited between process enumeration and /proc inspection.
+        catch (DirectoryNotFoundException) { return null; }
         catch (InvalidOperationException) { throw; }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or NotSupportedException)
         { throw new InvalidOperationException("The local server process could not be verified. Close it yourself before updating.", exception); }
@@ -261,10 +318,13 @@ internal sealed class ManagedProcessInspector : IManagedProcessInspector
         try
         {
             using var process = Process.GetProcessById(identity.ProcessId);
-            if (process.StartTime.ToUniversalTime().Ticks != identity.StartTimeUtcTicks) return; // Original process already exited.
+            if (ManagedProcessStartIdentity.Read(process) != identity.StartIdentity) return; // Original process already exited.
             await process.WaitForExitAsync(cancellationToken);
         }
         catch (ArgumentException) { } // Already exited.
+        catch (FileNotFoundException) { } // /proc entry disappeared after obtaining the Process object.
+        catch (DirectoryNotFoundException) { }
         catch (InvalidOperationException) when (Inspect(identity.ProcessId) is null) { }
+        catch (IOException) when (Inspect(identity.ProcessId) is null) { }
     }
 }

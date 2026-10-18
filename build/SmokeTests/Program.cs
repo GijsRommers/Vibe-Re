@@ -110,7 +110,9 @@ try
                 if (desktop is not null)
                 {
                     desktop.Kill(entireProcessTree: false);
-                    await desktop.WaitForExitAsync();
+                    // WaitForExitAsync also waits for redirected stream EOF. On Windows the
+                    // still-running child server can inherit those handles; wait only for the client.
+                    Require(desktop.WaitForExit(10000), "Desktop did not exit before update shutdown test");
                     desktop.Dispose();
                     desktop = null;
                 }

@@ -19,14 +19,18 @@ public sealed class ManagedServerRegistration : IDisposable
         using var process = Process.GetCurrentProcess();
         var executable = ManagedServerState.Normalize(Environment.ProcessPath
             ?? throw new InvalidOperationException("The managed server executable cannot be identified."));
-        if (pending.Protocol != ManagedServerState.ProtocolVersion || pending.InstallationId != state.InstallationId || pending.PipeName != pipeName
-            || !ManagedServerState.IsWithin(executable, state.InstallationDirectory)
-            || !executable.Equals(pending.ExpectedExecutable, ManagedServerState.PathComparison)
-            || (pending.ProcessId is int expectedId && expectedId != process.Id)
-            || (pending.StartTimeUtcTicks is long expectedStart && expectedStart != process.StartTime.ToUniversalTime().Ticks))
-            throw new InvalidOperationException("The managed server launch identity could not be verified.");
+        if (pending.Protocol != ManagedServerState.ProtocolVersion || pending.InstallationId != state.InstallationId || pending.PipeName != pipeName)
+            throw new InvalidOperationException("The managed server installation registration could not be verified.");
+        if (!ManagedServerState.IsWithin(executable, state.InstallationDirectory)
+            || !executable.Equals(pending.ExpectedExecutable, ManagedServerState.PathComparison))
+            throw new InvalidOperationException("The managed server executable did not match the launched executable.");
+        if (pending.ProcessId is int expectedId && expectedId != process.Id)
+            throw new InvalidOperationException("The managed server process ID did not match the launched process.");
+        var startIdentity = ManagedProcessStartIdentity.Read(process);
+        if (pending.StartIdentity is string expectedStart && expectedStart != startIdentity)
+            throw new InvalidOperationException("The managed server process start identity did not match the launched process.");
         descriptor = new(ManagedServerState.ProtocolVersion, state.InstallationId, state.InstallationDirectory,
-            pipeName, process.Id, process.StartTime.ToUniversalTime().Ticks, executable);
+            pipeName, process.Id, startIdentity, executable);
         pipe = CreatePipe(pipeName);
         try { state.Write(state.DescriptorPath(pipeName), descriptor); }
         catch { pipe.Dispose(); throw; }
@@ -98,8 +102,8 @@ public sealed class ManagedServerRegistration : IDisposable
 
 internal static class ManagedPipeProtocol
 {
-    internal static string Request(ManagedServerDescriptor descriptor) => $"vibere-managed-v1:{descriptor.ProcessId}:{descriptor.StartTimeUtcTicks}:shutdown";
-    internal static string Response(ManagedServerDescriptor descriptor) => $"vibere-managed-v1:{descriptor.ProcessId}:{descriptor.StartTimeUtcTicks}:stopping";
+    internal static string Request(ManagedServerDescriptor descriptor) => $"vibere-managed-v1:{descriptor.ProcessId}:{descriptor.StartIdentity}:shutdown";
+    internal static string Response(ManagedServerDescriptor descriptor) => $"vibere-managed-v1:{descriptor.ProcessId}:{descriptor.StartIdentity}:stopping";
     internal static async Task<string> ReadLineAsync(Stream stream, CancellationToken cancellationToken)
     {
         var bytes = new List<byte>();

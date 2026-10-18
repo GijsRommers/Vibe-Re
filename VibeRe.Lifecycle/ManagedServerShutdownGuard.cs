@@ -91,7 +91,7 @@ public sealed class ManagedServerShutdownGuard : IServerShutdownGuard
             if (pending.Protocol != ManagedServerState.ProtocolVersion || pending.InstallationId != state.InstallationId)
                 throw UnverifiedOwnership();
             if (File.Exists(state.DescriptorPath(pending.PipeName))) continue;
-            if (pending.ProcessId is int pid && pending.StartTimeUtcTicks is not null && processes.Inspect(pid) is null)
+            if (pending.ProcessId is int pid && pending.StartIdentity is not null && processes.Inspect(pid) is null)
             { File.Delete(path); continue; }
             throw new InvalidOperationException("A local server launch has not confirmed ownership yet. Wait for startup to finish, or close that server yourself, before updating.");
         }
@@ -115,7 +115,7 @@ public sealed class ManagedServerShutdownGuard : IServerShutdownGuard
 
     private static void VerifyProcess(ManagedServerDescriptor descriptor, ManagedProcessIdentity process)
     {
-        if (descriptor.ProcessId != process.ProcessId || descriptor.StartTimeUtcTicks != process.StartTimeUtcTicks
+        if (descriptor.ProcessId != process.ProcessId || descriptor.StartIdentity != process.StartIdentity
             || !descriptor.ExecutablePath.Equals(process.ExecutablePath, ManagedServerState.PathComparison)) throw UnverifiedOwnership();
     }
 

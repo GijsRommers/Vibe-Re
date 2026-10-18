@@ -69,6 +69,7 @@ jobs:
           $version = if ($env:REQUESTED_VERSION) { $env:REQUESTED_VERSION } elseif ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { "0.1.0-ci.$env:GITHUB_RUN_NUMBER" }
           ./build/Package.ps1 -Runtime $env:BUILD_RID -Version $version -Velopack -WindowsInstaller:($IsWindows) -IsccPath $env:ISCC_PATH
       - name: Validate relocated published apps
+        timeout-minutes: 10
         if: runner.os != 'Linux'
         env:
           BUILD_RID: ${{ matrix.rid }}
@@ -76,6 +77,7 @@ jobs:
           dotnet run --project build/SmokeTests -c Release -- --root "artifacts/stage/$env:BUILD_RID"
           if ($LASTEXITCODE) { throw 'Published smoke tests failed.' }
       - name: Validate relocated published apps with virtual display
+        timeout-minutes: 10
         if: runner.os == 'Linux'
         run: |
           dbus-run-session -- bash build/Test-LinuxPackage.sh

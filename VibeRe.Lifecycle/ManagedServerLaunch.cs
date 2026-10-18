@@ -26,7 +26,7 @@ public sealed class ManagedServerLaunch : IDisposable
             PipeName = "vibere-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
             using var owner = Process.GetCurrentProcess();
             pending = new(ManagedServerState.ProtocolVersion, state.InstallationId, PipeName,
-                ManagedServerState.Normalize(executable), owner.Id, owner.StartTime.ToUniversalTime().Ticks);
+                ManagedServerState.Normalize(executable), owner.Id, ManagedProcessStartIdentity.Read(owner));
             state.Write(state.PendingPath(PipeName), pending);
         }
         catch { gate.Dispose(); throw; }
@@ -53,10 +53,10 @@ public sealed class ManagedServerLaunch : IDisposable
         started = true;
         try
         {
-            pending = pending with { ProcessId = process.Id, StartTimeUtcTicks = process.StartTime.ToUniversalTime().Ticks };
+            pending = pending with { ProcessId = process.Id, StartIdentity = ManagedProcessStartIdentity.Read(process) };
             state.Write(state.PendingPath(PipeName), pending);
         }
-        catch (InvalidOperationException) when (process.HasExited)
+        catch (Exception exception) when ((exception is InvalidOperationException or IOException) && process.HasExited)
         {
             File.Delete(state.PendingPath(PipeName));
             throw new InvalidOperationException("The local server exited before startup completed. Check the server log.");
@@ -71,7 +71,7 @@ public sealed class ManagedServerLaunch : IDisposable
             if (File.Exists(state.DescriptorPath(PipeName)))
             {
                 var descriptor = state.Read<ManagedServerDescriptor>(state.DescriptorPath(PipeName));
-                if (descriptor.ProcessId != pending.ProcessId || descriptor.StartTimeUtcTicks != pending.StartTimeUtcTicks
+                if (descriptor.ProcessId != pending.ProcessId || descriptor.StartIdentity != pending.StartIdentity
                     || descriptor.InstallationId != state.InstallationId || descriptor.PipeName != PipeName
                     || !descriptor.ExecutablePath.Equals(pending.ExpectedExecutable, ManagedServerState.PathComparison))
                     throw new InvalidOperationException("The launched local server identity could not be verified. Close it yourself before updating.");
