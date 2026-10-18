@@ -5,38 +5,43 @@
 
 PREFIX    ?= $(HOME)/.local
 BINDIR    ?= $(PREFIX)/bin
+LIBDIR    ?= $(PREFIX)/lib/vibe-re
 CONFIG    ?= Release
 RID       ?= $(shell dotnet --info | awk '/RID:/ { print $$2; exit }')
-OUT       := artifacts/$(RID)
+OUT       := artifacts/stage/$(RID)
 BINARIES  := vibe-re vibe-re-server
 
-# Self-contained single files, so the installed binaries don't depend on a local .NET runtime.
+# Preserve complete, isolated publish trees, including settings and native libraries.
 PUBLISH   := dotnet publish -c $(CONFIG) -r $(RID) --self-contained \
-             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -o $(OUT)
+             -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None
 
 .PHONY: all build test publish install uninstall server stop clean
 
 all: build
 
 build:
-	dotnet build vibe-re.sln -c $(CONFIG)
+	dotnet build vibe-re.desktop.slnf -c $(CONFIG)
 
 test:
-	dotnet test vibe-re.sln -c $(CONFIG)
+	dotnet test vibe-re.desktop.slnf -c $(CONFIG)
 
 publish:
-	$(PUBLISH) VibeRe.Cli
-	$(PUBLISH) VibeRe.Server
+	$(PUBLISH) VibeRe.Cli -o "$(OUT)/cli"
+	$(PUBLISH) VibeRe.Server -o "$(OUT)/server"
 
-# Stops a running server before replacing the installed binary.
+# Stops a running server before replacing the installed files.
 install: publish stop
 	install -d "$(BINDIR)"
-	for bin in $(BINARIES); do install -m 755 "$(OUT)/$$bin" "$(BINDIR)/$$bin"; done
+	install -d "$(LIBDIR)"
+	cp -R "$(OUT)/cli" "$(OUT)/server" "$(LIBDIR)/"
+	ln -sfn "$(abspath $(LIBDIR))/cli/vibe-re" "$(BINDIR)/vibe-re"
+	ln -sfn "$(abspath $(LIBDIR))/server/vibe-re-server" "$(BINDIR)/vibe-re-server"
 	@echo "Installed $(BINARIES) into $(BINDIR)"
 	@case ":$$PATH:" in *":$(BINDIR):"*) ;; *) echo "Note: $(BINDIR) is not on your PATH." ;; esac
 
 uninstall: stop
 	for bin in $(BINARIES); do rm -f "$(BINDIR)/$$bin"; done
+	rm -rf "$(LIBDIR)/cli" "$(LIBDIR)/server"
 
 # Runs the server in the foreground from source, for development.
 server:
@@ -46,5 +51,5 @@ stop:
 	@pkill -x vibe-re-server || true
 
 clean:
-	dotnet clean vibe-re.sln
+	dotnet clean vibe-re.desktop.slnf
 	rm -rf artifacts
