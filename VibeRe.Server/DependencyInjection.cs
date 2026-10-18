@@ -1,4 +1,6 @@
 using Latchkey.Extensions.DependencyInjection;
+using VibeRe.Server.Application.Access;
+using VibeRe.Server.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using VibeRe.Server.Application.Secrets;
@@ -16,6 +18,13 @@ internal static class DependencyInjection
     public static IServiceCollection AddVibeReServices(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IDeviceSessionStore, DeviceSessionStore>();
+        services.AddSingleton<DeviceAccessService>();
+        services.AddSingleton<IDeviceAccessService>(sp => sp.GetRequiredService<DeviceAccessService>());
+        services.AddSingleton<IDeviceSessionIssuer>(sp => sp.GetRequiredService<DeviceAccessService>());
+        services.AddSingleton<ClientAccessPolicy>();
+        services.AddSingleton<DeviceConnectionGuard>();
+        services.AddSingleton<DeviceAccessHubFilter>();
         services.AddSingleton<TimestampedEntityInterceptor>();
 
         services.AddDbContextFactory<VibeReDbContext>((sp, options) =>

@@ -1,6 +1,6 @@
 # VibeRe
 
-VibeRe runs provider authentication on the server. CLI, Avalonia desktop, and MAUI mobile use the same SignalR API and shared JSON DTOs in `VibeRe.Contracts`. `VibeRe.Client.Application` shares startup, settings policy, and presentation state; `VibeRe.Client.Infrastructure` implements storage and server transport. Clients can save multiple named servers and choose an active server. Each server owns its Mistral credentials; logging in from one client is visible to other clients connected to that server.
+VibeRe runs provider authentication on the server. CLI, Avalonia desktop, MAUI mobile, and Blazor WebAssembly use the same SignalR API and shared JSON DTOs in `VibeRe.Contracts`. `VibeRe.Client.Application` shares startup, settings policy, and presentation state; `VibeRe.Client.Infrastructure` implements native storage and platform adapters; `VibeRe.Client.SignalR` supplies the shared browser/native transport. Clients can save multiple named servers and choose an active server. Each server owns its Mistral credentials; logging in from one client is visible to other clients connected to that server.
 
 ## Run locally
 
@@ -47,7 +47,7 @@ Mistral browser sign-in follows the [official Vibe implementation](https://githu
 
 ```sh
 dotnet run --project VibeRe.Cli -- servers add work https://vibe.example.com
-dotnet run --project VibeRe.Cli -- servers token work
+dotnet run --project VibeRe.Cli -- servers pair work "Work laptop"
 dotnet run --project VibeRe.Cli -- servers use work
 dotnet run --project VibeRe.Cli -- servers list
 
@@ -73,17 +73,50 @@ The client database contains names, addresses, IDs, token-presence flags, the ac
 
 `VIBE_RE_SERVER_TOKEN` overrides the selected connection's token for a CLI invocation. `MISTRAL_API_KEY` is imported only during explicit CLI API-key login; client environment variables do not silently override server credentials.
 
-## Remote and mobile connections
+## Web, LAN, and mobile connections
 
-Remote connections require HTTPS and a server access token. Configure `Server__AccessToken` on the server and enter the same token in each client. This token grants access to the server's authentication actions; it is separate from the Mistral API key. If it is configured, local clients must supply it too. Without it, the server accepts only loopback clients.
+Run `VibeRe.Server`, then open its address in a browser. The host serves `VibeRe.Web`, a Blazor WebAssembly client, at `/`; there is no server-side UI circuit. It uses the same application login flow and SignalR transport as the native clients. Published server output includes the web assets. Source startup also serves them in Production, including when managed clients launch without a development profile.
 
-Bind a second-PC server to an HTTPS endpoint with `ASPNETCORE_URLS` and a trusted Kestrel certificate. Remote access requires HTTPS and a server access token; plaintext HTTP is allowed only when both the peer and Host are loopback. A reverse proxy must support WebSockets and use HTTPS upstream, or have explicitly trusted forwarded-header handling configured by the deployer; the app does not trust forwarded headers by default. Native clients verify certificates and connect directly over WebSockets without following negotiation or HTTP-upgrade redirects. Provider browser polling URLs are restricted to Mistral's HTTPS console origin, and HTTP client logging for provider authentication is disabled to keep polling tokens out of logs.
+The browser uses the server that served the page. **Open another server** navigates to the other server's root instead of sending credentials cross-origin. Browsers cannot launch local processes or use the native keyring. Local CLI/desktop startup behavior is unchanged; opening a web page requires its server to be running.
 
-The versioned hub is `/hubs/v1/auth`; readiness at `/.well-known/vibe-re/server` identifies protocol version 2 and transport `signalr`. Upgrade clients and servers together: the former protocol-1 server is not compatible. The hub exposes `Login(apiKey)`, `GetStatus()`, `Logout()`, `StartBrowserLogin()`, `WatchBrowserLogin(attemptId)` (server stream), and `CancelBrowserLogin(attemptId)`. Authentication DTOs contain status, messages, an opaque attempt ID/expiry, and the verification URL, never provider credentials or PKCE secrets.
+For another PC or phone, use a reachable HTTPS address with a trusted certificate. Direct Kestrel HTTPS can be configured with `ASPNETCORE_URLS` and a certificate. Plain HTTP is accepted for privileged actions only when both the socket peer and Host are loopback. Native clients verify certificates and never follow connection or pairing redirects to another server.
 
-A future browser UI can use the standard SignalR JavaScript client against this same endpoint. Browser requests must be same-origin, including WebSocket upgrades; no cross-origin access is enabled. Bearer headers are accepted on ordinary requests, with query tokens limited to browser WebSocket connections or SSE GET requests. The server suppresses request/frame logging that could contain tokens; configure any proxy to redact query strings too. No web UI is included yet. Native clients require WebSocket support; HTTP long polling is also exercised by integration tests through an injected HTTP handler.
+Pair each device rather than sharing a server administrator token:
 
-On a physical phone, `localhost` refers to the phone. Add your server's reachable HTTPS address in the mobile UI and configure its access token. Connection lists are local to each device; they are not synchronized between devices.
+1. Open the server's HTTPS URL in the remote browser and choose **Get pairing code**, or add that URL in the native client's **Manage servers** and choose **Pair this device**. CLI: `servers pair NAME "My laptop"`.
+2. On the server computer, open its direct `http://localhost:5067` page, expand **Manage devices**, and approve the displayed code.
+3. The waiting device finishes pairing automatically. Use the local web **Manage devices** section to list devices and revoke access.
+
+Pairing codes expire after five minutes and can be redeemed once using the requesting device's separate secret. Approval is available only through a direct loopback connection. Each approved device gets a separate 30-day session, stored as a hash on the server. Revocation and expiry invalidate further requests and terminate active connections. Pairing grants the current provider-auth actions, including login/logout, but no device-management authority. Use **Disconnect this browser** to revoke its device session; provider **Logout** removes the selected server's Mistral login for every connected client.
+
+The browser receives a host-only, HttpOnly, SameSite=Strict cookie, Secure over HTTPS; its durable token is never returned to JavaScript or placed in a URL/localStorage. HTTPS cookies use the `__Host-` prefix and path `/`. Cookies are host-scoped, not port-scoped: use a dedicated hostname and trust every service on that hostname. Native device tokens go to the existing per-server OS credential store. Mistral credentials stay in the server's secret store. Explicit API-key entry travels to that server for validation and storage; clients do not retrieve stored provider keys.
+
+`Server__AccessToken` remains an optional administrator credential for existing native deployments. When configured, it is required even for initial local access; enter it through the native client's masked token prompt, or the local web connection prompt. It must not be put in URLs. Remote administrator tokens still cannot approve devices; approval remains local-only.
+
+Browser requests, including WebSocket upgrades, must be same-origin. Every state-changing pairing endpoint also requires an antiforgery token. There is no cross-origin credential sharing or permissive CORS. The native redemption endpoint rejects browser Origin headers; browser redemption only sets the HttpOnly cookie. Pairing start/approval/redemption are bounded and rate-limited. Query-string access tokens are rejected for every transport, including WebSocket and SSE. Avoid credential-bearing request/body logs in any proxy.
+
+The versioned hub is `/hubs/v1/auth`; public readiness at `/.well-known/vibe-re/server` identifies protocol version 2 and transport `signalr`. Upgrade clients and servers together. The hub exposes `Login(apiKey)`, `GetStatus()`, `Logout()`, `StartBrowserLogin()`, `WatchBrowserLogin(attemptId)` (server stream), and `CancelBrowserLogin(attemptId)`. DTOs contain status, an opaque attempt ID/expiry, and a verification URL, never stored provider credentials or PKCE secrets. Disconnected clients can resume the same login attempt. Native and browser clients require WebSockets. Long polling is exercised separately by integration tests.
+
+On a physical phone, `localhost` refers to the phone. Use the server's reachable HTTPS address and pair that device. Connection lists remain local to each native device; they are not synchronized.
+
+### Tailscale Serve
+
+A trusted HTTPS Tailscale address works with the same server selection and device pairing. No Tailscale SDK is required in VibeRe. For an already configured tailnet, [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve) can terminate HTTPS and forward to the loopback server. Configure the exact public origin on VibeRe and keep its backend loopback-only, for example:
+
+```sh
+# Replace this example with your machine's actual HTTPS tailnet origin.
+Server__TailscaleOrigin=https://my-pc.example-tailnet.ts.net \
+  ASPNETCORE_URLS=http://127.0.0.1:5067 dotnet run --project VibeRe.Server --no-launch-profile
+
+# Run separately on that computer after reviewing your existing Tailscale setup.
+tailscale serve --bg http://127.0.0.1:5067
+```
+
+Use the root mount and TCP loopback backend shown above, not a subpath or Unix socket. Open the resulting HTTPS URL in the other device's browser, or save it as a native server connection. Approve pairing through direct `http://localhost:5067` on the server computer. The HTTPS URL is remote access even when a request arrives through a local proxy; it cannot inherit local administrator privileges.
+
+`Server:TailscaleOrigin` is opt-in and accepts one HTTPS `*.ts.net` origin. VibeRe requires all configured backend listeners to be loopback, accepts Serve headers only from a loopback socket, checks both Host values and forwarded HTTPS, and uses the configured origin for cookie security and exact-Origin checks. It does not trust Tailscale identity headers or forwarded IP addresses as authorization. Unknown/unconfigured forwarded requests and Funnel-marked requests are rejected. Local processes are in this trust boundary; do not run an untrusted local proxy or expose the backend directly. Tailscale access rules control network reachability, while VibeRe pairing controls application access.
+
+Serve support is intentionally limited to this explicit configuration. It does not install Tailscale, sign into a tailnet, change firewall rules, enable Funnel, or provision a cloud service. Use direct HTTPS for other reverse-proxy deployments unless an equally narrow trusted adapter is provided. Actual tailnet connectivity, certificate provisioning, and the installed Serve version's WebSocket behavior must be verified on the user's machines.
 
 ## Validation
 
@@ -98,6 +131,7 @@ dotnet test VibeRe.Server.Infrastructure.Tests
 dotnet test VibeRe.Client.Tests
 dotnet test VibeRe.Cli.Tests
 dotnet test VibeRe.Server.Tests
+dotnet test VibeRe.Web.Tests
 ```
 
 The tests use fake Mistral HTTP responses, isolated SQLite databases, and fake secret stores. They cover both login methods, PKCE, expiry/cancellation, billing/rejected-key behavior, credential rollback, server access control, multiple-client visibility, independent servers, restart persistence, and concurrent client configuration updates. They do not sign in to a real Mistral account.
@@ -117,9 +151,11 @@ The projects separate application policy from IO on each side:
 - `VibeRe.Server.Application`: authentication use cases and the repository/secret-store contracts they need.
 - `VibeRe.Server.Infrastructure`: model-provider adapters, persistence, and credential-store implementations. The `VibeRe.Server` host composes these and exposes the SignalR hub.
 - `VibeRe.Client.Application`: startup/login presentation state, settings policy, transport-independent authentication results, and small IO contracts. It has no database, process, filesystem, SignalR, or infrastructure dependency.
-- `VibeRe.Client.Infrastructure`: SQLite settings, keyring, browser/process/readiness adapters, and SignalR server transport. It depends on Client.Application, never the reverse. The former Client and Runtime projects are replaced by these two layers. The former Protocol project is replaced by `VibeRe.Contracts`, a dependency-free set of versioned wire DTOs and endpoint constants shared only by the transport adapters.
+- `VibeRe.Client.Infrastructure`: native SQLite settings, keyring, browser/process/readiness adapters, and device-pairing HTTP adapter. It depends on Client.Application, never the reverse. The former Client and Runtime projects are replaced by these two layers. The former Protocol project is replaced by `VibeRe.Contracts`, a dependency-free set of versioned wire DTOs and endpoint constants shared only by the transport adapters.
 
-CLI and desktop reuse the infrastructure adapters. Mobile supplies its own browser/secure-storage implementations and app-data path at the host's `AddVibeReClient` call. Transport errors and cancellation are translated at the infrastructure boundary, so shared application and presentation code never handles transport-specific exceptions. Provider credentials remain server-owned; these project moves do not change the database format or require data conversion. ACP is not implemented by this change.
+`VibeRe.Client.SignalR` is the small shared transport assembly: the authentication adapter, with no filesystem, keyring, process, or browser-window code. `VibeRe.Web` composes it with browser-safe same-origin access and navigation, plus generated JSON metadata for trimmed WebAssembly publishing. It never references native Client.Infrastructure.
+
+CLI and desktop reuse the infrastructure adapters. Mobile supplies its own browser/secure-storage implementations and app-data path at the host's `AddVibeReClient` call. Transport errors and cancellation are translated at the infrastructure boundary, so shared application and presentation code never handles transport-specific exceptions. Provider credentials remain server-owned; existing databases migrate automatically, including the separate hashed device-session table. ACP is not implemented by this change.
 
 Inject `VibeRe.Client.Application.Configuration.IClientConfigurationStore` to read a snapshot:
 

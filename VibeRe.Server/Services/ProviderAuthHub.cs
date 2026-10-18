@@ -10,6 +10,7 @@ public sealed class ProviderAuthHub(
     IAuthService auth,
     IBrowserAuthService browser,
     IHostApplicationLifetime lifetime,
+    DeviceAccessHubFilter access,
     ILogger<ProviderAuthHub> logger) : Hub
 {
     private const string Provider = "mistral";
@@ -51,8 +52,19 @@ public sealed class ProviderAuthHub(
         {
             // Finish an in-flight exchange even if the watcher disconnects, so a consumed provider token
             // cannot strand the attempt. Only explicit cancel/logout changes an attempt to Canceled.
+            await access.EnsureAuthorizedAsync(Context);
             var status = await ExecuteBrowserAsync(() => browser.PollAsync(attemptId, lifetime.ApplicationStopping));
-            if (watching.IsCancellationRequested) yield break;
+            if (watching.IsCancellationRequested)
+            {
+                yield break;
+            }
+
+            await access.EnsureAuthorizedAsync(Context);
+            if (watching.IsCancellationRequested)
+            {
+                yield break;
+            }
+
             yield return status;
             if (status.State != BrowserLoginState.Waiting)
             {

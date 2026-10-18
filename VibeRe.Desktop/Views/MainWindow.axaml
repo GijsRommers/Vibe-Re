@@ -48,6 +48,16 @@
                         <Button Grid.Column="2" Content="Remove" Command="{Binding RemoveServerCommand}" />
                     </Grid>
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <TextBox Text="{Binding PairingDeviceName}" PlaceholderText="Device name" IsEnabled="{Binding CanEdit}" />
+                        <Button Grid.Column="1" Content="Pair this device" Command="{Binding PairDeviceCommand}" />
+                    </Grid>
+                    <StackPanel IsVisible="{Binding HasPairingChallenge}" Spacing="8">
+                        <TextBox Text="{Binding PairingApprovalCode}" IsReadOnly="True" FontSize="24"
+                                 HorizontalContentAlignment="Center" AutomationProperties.Name="Device approval code" />
+                        <TextBlock Text="{Binding PairingInstructions}" TextWrapping="Wrap" FontSize="12" />
+                    </StackPanel>
+                    <TextBlock Text="Pairing grants access to this server. Mistral login is separate." TextWrapping="Wrap" FontSize="12" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                         <TextBox Text="{Binding ServerToken}" PasswordChar="●" PlaceholderText="Server access token" IsEnabled="{Binding CanEdit}" />
                         <Button Grid.Column="1" Content="Save token" Command="{Binding SaveTokenCommand}" />
                     </Grid>

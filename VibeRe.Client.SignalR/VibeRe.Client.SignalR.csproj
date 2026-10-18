@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <ProjectReference Include="..\VibeRe.Client.Application\VibeRe.Client.Application.csproj" />
+        <ProjectReference Include="..\VibeRe.Contracts\VibeRe.Contracts.csproj" />
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
+    </ItemGroup>
+</Project>

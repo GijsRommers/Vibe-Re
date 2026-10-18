@@ -40,6 +40,14 @@
                     <Button Text="Remove Mistral login" Command="{Binding LogoutCommand}" />
                     <Entry Text="{Binding ServerAddress}" Placeholder="Server URL" IsEnabled="{Binding CanEdit}" TextColor="#F5F5F5" />
                     <Button Text="Save address" Command="{Binding SaveAddressCommand}" />
+                    <Entry Text="{Binding PairingDeviceName}" Placeholder="Device name" IsEnabled="{Binding CanEdit}" TextColor="#F5F5F5" />
+                    <Button Text="Pair this device" Command="{Binding PairDeviceCommand}" />
+                    <VerticalStackLayout IsVisible="{Binding HasPairingChallenge}" Spacing="8">
+                        <Entry Text="{Binding PairingApprovalCode}" IsReadOnly="True" FontSize="24" HorizontalTextAlignment="Center"
+                               TextColor="#F5F5F5" SemanticProperties.Description="Device approval code" />
+                        <Label Text="{Binding PairingInstructions}" FontSize="12" TextColor="#AAAAAA" />
+                    </VerticalStackLayout>
+                    <Label Text="Pairing grants access to this server. Mistral login is separate." FontSize="12" TextColor="#AAAAAA" />
                     <Entry Text="{Binding ServerToken}" IsPassword="True" Placeholder="Server access token" IsEnabled="{Binding CanEdit}" TextColor="#F5F5F5" />
                     <Button Text="Save token" Command="{Binding SaveTokenCommand}" />
                     <Label Text="Saving an empty token clears it. Changing the address clears its saved token." FontSize="12" TextColor="#AAAAAA" />

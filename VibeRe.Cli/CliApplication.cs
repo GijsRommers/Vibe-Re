@@ -38,11 +38,13 @@ public sealed class CliApplication(AuthCommands auth, ServerCommands servers)
         vibe-re servers remove NAME
         vibe-re servers local NAME on|off
         vibe-re servers required on|off
+        vibe-re servers pair NAME [DEVICE_NAME]
         vibe-re servers token NAME [--token-stdin]
 
         Browser login is the default. API-key login reads MISTRAL_API_KEY or prompts without echo.
         The default local server starts automatically when needed. Remote servers never start a local process.
         Server settings are shared with desktop. Tokens are saved in the OS credential store.
+        Pairing requires approval in the server's local web UI and does not log in to Mistral.
         VIBE_RE_CLIENT_DATABASE overrides the client database path; VIBE_RE_SERVER_TOKEN overrides the selected server token.
         """);
 }

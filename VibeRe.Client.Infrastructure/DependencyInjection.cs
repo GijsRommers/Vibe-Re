@@ -12,6 +12,7 @@ public static class DependencyInjection
         services.AddSingleton<IClientConfigurationStore>(new ClientConnectionDatabase(databasePath));
         services.TryAddSingleton<IServerTokenStore, KeyringServerTokenStore>();
         services.TryAddSingleton<IBrowserLauncher, SystemBrowserLauncher>();
+        services.TryAddSingleton<IDevicePairingClient, DevicePairingClient>();
         services.AddSingleton<IServerConnectionManager, ServerConnectionManager>();
         services.AddSingleton<IServerConnector, ServerConnector>();
         services.AddSingleton<ClientStartup>();
