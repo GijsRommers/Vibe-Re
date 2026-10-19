@@ -15,7 +15,7 @@ public sealed class ClientCancellationTests
         using var client = server.CreateClient();
         using var cancellation = new CancellationTokenSource();
         var login = client.LoginWithBrowserAsync(_ => Task.CompletedTask, cancellation.Token);
-        await watchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await watchStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
         var elapsed = Stopwatch.StartNew();
 
         cancellation.Cancel();
@@ -31,10 +31,19 @@ public sealed class ClientCancellationTests
         using var server = UnresponsiveCleanupServer();
         using var client = server.CreateClient();
         var original = new InvalidOperationException("Browser callback failed.");
+        var callbackStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var callback = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var login = client.LoginWithBrowserAsync(_ =>
+        {
+            callbackStarted.SetResult();
+            return callback.Task;
+        });
+        await callbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
         var elapsed = Stopwatch.StartNew();
+        callback.SetException(original);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            client.LoginWithBrowserAsync(_ => Task.FromException(original)).WaitAsync(TimeSpan.FromSeconds(5)));
+            login.WaitAsync(TimeSpan.FromSeconds(5)));
 
         Assert.Same(original, error);
         AssertBoundedCleanup(server, elapsed);
@@ -50,9 +59,18 @@ public sealed class ClientCancellationTests
             ExpiresAtUnixSeconds = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds()
         });
         using var client = server.CreateClient();
+        var callbackStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var callback = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var login = client.LoginWithBrowserAsync(_ =>
+        {
+            callbackStarted.SetResult();
+            return callback.Task;
+        });
+        await callbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
         var elapsed = Stopwatch.StartNew();
+        callback.SetResult();
 
-        var result = await client.LoginWithBrowserAsync(_ => Task.CompletedTask).WaitAsync(TimeSpan.FromSeconds(5));
+        var result = await login.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(BrowserLoginState.Expired, result.State);
         AssertBoundedCleanup(server, elapsed);

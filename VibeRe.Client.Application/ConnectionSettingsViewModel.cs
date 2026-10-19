@@ -11,6 +11,7 @@ public partial class ConnectionSettingsViewModel(
     IServerConnector connector,
     ClientStartup startup,
     IBrowserLauncher browser,
+    IDevicePairingClient? pairing = null,
     ClientCapabilities? capabilities = null) : ObservableObject
 {
     private readonly ClientCapabilities _capabilities = capabilities ?? new(true);
@@ -20,7 +21,7 @@ public partial class ConnectionSettingsViewModel(
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RemoveServerCommand), nameof(SaveAddressCommand), nameof(SaveTokenCommand),
-        nameof(RefreshCommand), nameof(LoginApiKeyCommand), nameof(LoginBrowserCommand), nameof(LogoutCommand))]
+        nameof(RefreshCommand), nameof(LoginApiKeyCommand), nameof(LoginBrowserCommand), nameof(LogoutCommand), nameof(PairDeviceCommand))]
     [NotifyPropertyChangedFor(nameof(CanStartLocally))]
     private ServerConnection? _selectedServer;
 
@@ -28,6 +29,11 @@ public partial class ConnectionSettingsViewModel(
     [ObservableProperty] private string _newServerAddress = "https://";
     [ObservableProperty] private string _serverAddress = "";
     [ObservableProperty] private string _serverToken = "";
+    [ObservableProperty] private string _pairingDeviceName = "My device";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPairingChallenge))]
+    private string _pairingApprovalCode = "";
+    [ObservableProperty] private string _pairingInstructions = "";
     [ObservableProperty] private string _apiKey = "";
     [ObservableProperty] private string _status = "Select a server to connect.";
     [ObservableProperty]
@@ -42,15 +48,18 @@ public partial class ConnectionSettingsViewModel(
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AddServerCommand), nameof(RemoveServerCommand), nameof(SaveAddressCommand),
-        nameof(SaveTokenCommand), nameof(RefreshCommand), nameof(LoginApiKeyCommand), nameof(LoginBrowserCommand), nameof(LogoutCommand))]
+        nameof(SaveTokenCommand), nameof(RefreshCommand), nameof(LoginApiKeyCommand), nameof(LoginBrowserCommand), nameof(LogoutCommand),
+        nameof(PairDeviceCommand))]
     [NotifyPropertyChangedFor(nameof(CanEdit))]
     private bool _isBusy;
 
     public bool CanEdit => !IsBusy;
     public bool HasBrowserUrl => BrowserUrl.Length != 0;
+    public bool HasPairingChallenge => PairingApprovalCode.Length != 0;
     public bool CanStartLocally => _capabilities.SupportsLocalServer &&
         SelectedServer is { } server && global::VibeRe.Client.Application.ServerAddress.IsLoopback(server.Address);
     private bool CanConnect() => !IsBusy && SelectedServer is not null;
+    private bool CanPair() => CanConnect() && pairing is not null;
 
     public Task InitializeAsync() => UpdateAsync(connections.LoadAsync);
 
@@ -62,6 +71,8 @@ public partial class ConnectionSettingsViewModel(
         ServerToken = "";
         ApiKey = "";
         BrowserUrl = "";
+        PairingApprovalCode = "";
+        PairingInstructions = "";
         NeedsLogin = false;
         IsSignedIn = false;
         ShowApiKey = false;
@@ -118,6 +129,33 @@ public partial class ConnectionSettingsViewModel(
         ServerToken = "";
         return UpdateAsync(ct => connections.SetTokenAsync(server, token, ct));
     }
+
+    [RelayCommand(CanExecute = nameof(CanPair))]
+    private Task PairDeviceAsync() => RunAsync(async ct =>
+    {
+        var server = SelectedServer!;
+        var deviceName = PairingDeviceName;
+        Status = $"Requesting device access to {server.Name}…";
+        var token = await pairing!.PairAsync(server.Address, deviceName, challenge =>
+        {
+            ct.ThrowIfCancellationRequested();
+            PairingApprovalCode = challenge.ApprovalCode;
+            PairingInstructions = $"On the computer running {server.Name}, open its web UI locally and approve this code in Manage devices. " +
+                $"Expires {challenge.ExpiresAt.ToLocalTime():t}.";
+            Status = $"Waiting for {server.Name}'s owner to approve this device.";
+            return Task.CompletedTask;
+        }, ct);
+        ct.ThrowIfCancellationRequested();
+        if (SelectedServer?.Id != server.Id)
+            throw new InvalidOperationException("The selected server changed. Pair this device again.");
+        var configuration = await connections.SetTokenAsync(server, token, ct);
+        ct.ThrowIfCancellationRequested();
+        PairingApprovalCode = "";
+        PairingInstructions = "";
+        Apply(configuration);
+        // Pairing grants server access only. Provider authentication remains a separate step.
+        await WithClientAsync((client, cancellation) => client.GetStatusAsync(cancellation), ct);
+    });
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private Task RefreshAsync() => RunAsync(ct => WithClientAsync((client, token) => client.GetStatusAsync(token), ct));
@@ -280,6 +318,8 @@ public partial class ConnectionSettingsViewModel(
             if (_operation == operation)
             {
                 BrowserUrl = "";
+                PairingApprovalCode = "";
+                PairingInstructions = "";
                 _operation = null;
                 IsBusy = false;
             }

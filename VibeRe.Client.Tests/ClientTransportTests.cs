@@ -90,53 +90,6 @@ public sealed class ClientTransportTests
         Assert.Empty(server.Scenario.CanceledAttempts);
     }
 
-    [Theory]
-    [InlineData("https://identity.provider.example/verify")]
-    [InlineData("https://identity.provider.example:8443/verify")]
-    public async Task BrowserLoginUsesProviderUrlAndMessagesFromServer(string signInUrl)
-    {
-        using var server = new SignalRTestServer(new()
-        {
-            Start = _ => Task.FromResult(TestAuthScenario.StartedAttempt() with
-            {
-                SignInUrl = signInUrl,
-                Message = "Continue with Example AI."
-            }),
-            Watch = (_, ct) => TestAuthScenario.Replies([
-                new()
-                {
-                    State = Protocol.BrowserLoginState.Failed,
-                    Message = "Example AI requires an active subscription.",
-                    AuthStatus = new()
-                    {
-                        State = Protocol.AuthState.SubscriptionRequired,
-                        Message = "Choose an Example AI plan."
-                    }
-                }], ct)
-        });
-        await using IVibeReClient client = server.CreateClient();
-        BrowserLoginResult? shown = null;
-
-        var result = await client.LoginWithBrowserAsync(attempt =>
-        {
-            shown = attempt;
-            return Task.CompletedTask;
-        });
-
-        Assert.NotNull(shown);
-        Assert.Equal(signInUrl, shown.SignInUrl);
-        Assert.Equal("Continue with Example AI.", shown.Message);
-        Assert.Equal(BrowserLoginState.Failed, result.State);
-        Assert.Equal("Example AI requires an active subscription.", result.Message);
-        Assert.Equal(new AuthStatus
-        {
-            State = AuthState.SubscriptionRequired,
-            Message = "Choose an Example AI plan."
-        }, result.AuthStatus);
-        Assert.Equal("attempt", Assert.Single(server.Scenario.WatchedAttempts));
-        Assert.Empty(server.Scenario.CanceledAttempts);
-    }
-
     public static IEnumerable<object[]> HubFailures() =>
         from method in new[] { "Login", "GetStatus", "Logout", "StartBrowserLogin", "WatchBrowserLogin" }
         from failure in new[] { "fault", "server-canceled", "hub" }

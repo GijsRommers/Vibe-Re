@@ -1,12 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.WebSockets;
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using VibeRe.Server.Services;
 using Microsoft.AspNetCore.SignalR.Client;
 using VibeRe.Client.Infrastructure;
@@ -128,14 +126,14 @@ public class SignalRSecurityTests
     }
 
     [Fact]
-    public async Task QueryTokenAuthorizesOnlyBrowserEventStreamAtHubEndpoint()
+    public async Task QueryTokenNeverAuthorizesBrowserEventStream()
     {
         using var server = new SignalRTestServer();
         using var http = server.CreateClient();
-        // An unknown connection ID passes auth but is rejected by the SignalR dispatcher.
+        // Browser clients use an HttpOnly session cookie, never a credential in the URL.
         using var stream = Request("GET", "?id=unknown&access_token=server-token");
         stream.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-        Assert.Equal(HttpStatusCode.NotFound, (await http.SendAsync(stream)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await http.SendAsync(stream)).StatusCode);
         using var negotiate = Request("POST", "/negotiate?negotiateVersion=1&access_token=server-token");
         negotiate.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
         Assert.Equal(HttpStatusCode.Unauthorized, (await http.SendAsync(negotiate)).StatusCode);
@@ -158,10 +156,10 @@ public class SignalRSecurityTests
 
     [Theory]
     [InlineData(null, "http", HttpStatusCode.Forbidden)]
-    [InlineData(null, "https", HttpStatusCode.Forbidden)]
+    [InlineData(null, "https", HttpStatusCode.Unauthorized)]
     [InlineData("server-token", "http", HttpStatusCode.Forbidden)]
     [InlineData("server-token", "https", HttpStatusCode.OK)]
-    public async Task RemoteConnectionsRequireBothConfiguredTokenAndHttps(string? token, string scheme, HttpStatusCode expected)
+    public async Task RemoteConnectionsRequireHttpsAndAnAuthorizedClient(string? token, string scheme, HttpStatusCode expected)
     {
         using var server = new SignalRTestServer(token: token, remoteIp: "203.0.113.19");
         using var http = server.CreateClient();
@@ -193,11 +191,11 @@ public class SignalRSecurityTests
     }
 
     [Theory]
-    [InlineData("CONNECT", true, 204)]
+    [InlineData("CONNECT", true, 401)]
     [InlineData("CONNECT", false, 401)]
-    [InlineData("GET", true, 204)]
+    [InlineData("GET", true, 401)]
     [InlineData("GET", false, 401)]
-    public async Task QueryTokenSupportsRecognizedHttp2WebSocketsButNotOrdinaryConnect(string method, bool websocket, int expected)
+    public async Task QueryTokenIsRejectedForBothHttp1AndHttp2WebSockets(string method, bool websocket, int expected)
     {
         var context = new DefaultHttpContext();
         context.Request.Method = method;
@@ -207,16 +205,13 @@ public class SignalRSecurityTests
         context.Request.QueryString = new QueryString("?access_token=server-token");
         context.Connection.RemoteIpAddress = IPAddress.Loopback;
         context.Features.Set<IHttpWebSocketFeature>(new WebSocketFeature(websocket));
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Server:AccessToken"] = "server-token"
-        }).Build();
+        using var server = new SignalRTestServer();
         var middleware = new ServerAccessMiddleware(http =>
         {
             http.Response.StatusCode = StatusCodes.Status204NoContent;
             return Task.CompletedTask;
-        }, configuration);
-        await middleware.InvokeAsync(context);
+        });
+        await middleware.InvokeAsync(context, server.Services.GetRequiredService<ClientAccessPolicy>());
         Assert.Equal(expected, context.Response.StatusCode);
     }
 
@@ -299,7 +294,7 @@ public class SignalRSecurityTests
     }
 
     [Fact]
-    public async Task BrowserStyleQueryTokenWebSocketRoundTripUsesSamePublicHub()
+    public async Task BrowserStyleQueryTokenWebSocketIsRejected()
     {
         using var server = new SignalRTestServer();
         server.UseKestrel(0);
@@ -311,16 +306,8 @@ public class SignalRSecurityTests
         using var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Origin", http.BaseAddress!.GetLeftPart(UriPartial.Authority));
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        await socket.ConnectAsync(uri, deadline.Token);
-        await Send(socket, "{\"protocol\":\"json\",\"version\":1}\u001e", deadline.Token);
-        Assert.Equal("{}\u001e", await Receive(socket, deadline.Token));
-        await Send(socket, "{\"type\":1,\"invocationId\":\"1\",\"target\":\"GetStatus\",\"arguments\":[]}\u001e", deadline.Token);
-        var payload = await Receive(socket, deadline.Token);
-        using var reply = JsonDocument.Parse(payload.TrimEnd('\u001e'));
-        Assert.Equal(3, reply.RootElement.GetProperty("type").GetInt32());
-        Assert.Equal(0, reply.RootElement.GetProperty("result").GetProperty("state").GetInt32());
-        Assert.DoesNotContain("server-token", payload);
-        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Test complete", deadline.Token);
+        var error = await Assert.ThrowsAsync<WebSocketException>(() => socket.ConnectAsync(uri, deadline.Token));
+        Assert.Contains("401", error.Message);
     }
 
     private static HttpRequestMessage Request(string method, string suffix, string? token = null)
@@ -330,19 +317,4 @@ public class SignalRSecurityTests
         return request;
     }
 
-    private static Task Send(ClientWebSocket socket, string text, CancellationToken cancellationToken) =>
-        socket.SendAsync(Encoding.UTF8.GetBytes(text), WebSocketMessageType.Text, true, cancellationToken);
-
-    private static async Task<string> Receive(ClientWebSocket socket, CancellationToken cancellationToken)
-    {
-        using var stream = new MemoryStream();
-        var buffer = new byte[4096];
-        WebSocketReceiveResult received;
-        do
-        {
-            received = await socket.ReceiveAsync(buffer, cancellationToken);
-            stream.Write(buffer, 0, received.Count);
-        } while (!received.EndOfMessage);
-        return Encoding.UTF8.GetString(stream.ToArray());
-    }
 }

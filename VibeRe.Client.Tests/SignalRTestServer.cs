@@ -2,7 +2,9 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -38,6 +40,17 @@ internal sealed class SignalRTestServer : IDisposable
     public TestAuthScenario Scenario { get; }
 
     public VibeReClient CreateClient() => new("https://server.example", httpHandler: _server.CreateHandler());
+
+    public HubConnection CreateConnection(Func<IServiceProvider, HubConnection>? connectionFactory = null)
+    {
+        var builder = new HubConnectionBuilder().WithUrl("https://server.example" + Protocol.ServerProtocol.AuthHubPath, options =>
+        {
+            options.Transports = HttpTransportType.LongPolling;
+            options.HttpMessageHandlerFactory = _ => _server.CreateHandler();
+        }).WithAutomaticReconnect();
+        if (connectionFactory is not null) builder.Services.AddSingleton(connectionFactory);
+        return builder.Build();
+    }
 
     public void Dispose() => _host.Dispose();
 }
