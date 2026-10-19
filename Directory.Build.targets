@@ -1,12 +1,13 @@
 <Project>
     <!-- Publishing a client includes the local runtime, so first launch needs no server installation step. -->
     <Target Name="BundleVibeReLocalServer" AfterTargets="Publish"
-            Condition="'$(MSBuildProjectName)' == 'VibeRe.Cli' Or '$(MSBuildProjectName)' == 'VibeRe.Desktop'">
+            Condition="('$(MSBuildProjectName)' == 'VibeRe.Cli' Or '$(MSBuildProjectName)' == 'VibeRe.Desktop') And '$(BundleLocalServer)' != 'false'">
         <PropertyGroup>
             <_BundledServerDirectory>$([System.IO.Path]::Combine($([System.IO.Path]::GetFullPath('$(PublishDir)', '$(MSBuildProjectDirectory)')), 'server'))/</_BundledServerDirectory>
         </PropertyGroup>
         <MSBuild Projects="$(MSBuildThisFileDirectory)VibeRe.Server/VibeRe.Server.csproj"
                  Targets="Restore;Publish"
+                 RemoveProperties="OutputPath;OutDir;BaseOutputPath;BaseIntermediateOutputPath;IntermediateOutputPath;MSBuildProjectExtensionsPath;_CommandLineDefinedOutputPath"
                  Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishSingleFile=$(PublishSingleFile);IncludeNativeLibrariesForSelfExtract=$(IncludeNativeLibrariesForSelfExtract);PublishDir=$(_BundledServerDirectory)" />
     </Target>
 </Project>

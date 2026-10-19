@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Velopack" Version="1.2.161" />
+    <ProjectReference Include="..\VibeRe.Lifecycle\VibeRe.Lifecycle.csproj" />
+  </ItemGroup>
+</Project>

@@ -5,11 +5,13 @@
         Title="VibeRe" Width="720" Height="680" MinWidth="520" MinHeight="480"
         Background="#101010" Foreground="#F5F5F5" RequestedThemeVariant="Dark">
     <Grid RowDefinitions="Auto,*" Margin="24" RowSpacing="24">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" MaxWidth="480" HorizontalAlignment="Stretch">
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" MaxWidth="600" HorizontalAlignment="Stretch">
             <ComboBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
                       IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch"
                       PlaceholderText="Choose a server" AutomationProperties.Name="Server" />
             <Button Grid.Column="1" Content="Manage servers" Command="{Binding ToggleServerSettingsCommand}"
+                    Background="Transparent" BorderThickness="0" Foreground="#AAAAAA" />
+            <Button Grid.Column="2" Content="Updates" Click="OpenUpdates" AutomationProperties.Name="Check for VibeRe updates"
                     Background="Transparent" BorderThickness="0" Foreground="#AAAAAA" />
         </Grid>
         <ScrollViewer Grid.Row="1" VerticalAlignment="Center">

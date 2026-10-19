@@ -31,6 +31,7 @@ public sealed class CliApplication(AuthCommands auth, ServerCommands servers)
         vibe-re [--server NAME] auth status
         vibe-re [--server NAME] auth login [--method browser|api-key] [--api-key-stdin]
         vibe-re [--server NAME] auth logout
+        vibe-re update                        Open the desktop installer/update window
         vibe-re servers list
         vibe-re servers add NAME URL [--local]
         vibe-re servers update NAME URL
