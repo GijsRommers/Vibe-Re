@@ -41,7 +41,8 @@ public sealed class LoginFlowTests : IDisposable
     [Fact]
     public async Task GuiShowsInvitationAndLoginButtonUsesTheSharedBrowserFlow()
     {
-        var client = new ClientStub(AuthState.SignedOut);
+        var server = (await new ClientConnectionDatabase(_database).LoadAsync()).Find();
+        var client = new ClientStub(AuthState.SignedOut, server);
         var browser = new BrowserStub();
         using var services = new ServiceCollection().AddVibeReClient(_database)
             .AddSingleton<IServerConnector>(new ConnectorStub(client))
@@ -345,10 +346,10 @@ public sealed class LoginFlowTests : IDisposable
         public Task OpenAsync(Uri uri) { Opened.Add(uri); if (fail) throw new InvalidOperationException("No browser"); return Task.CompletedTask; }
     }
 
-    private sealed class ConnectorStub(IVibeReClient client) : IServerConnector
+    private sealed class ConnectorStub(ClientStub client) : IServerConnector
     {
         public Task<(ServerConnection Server, IVibeReClient Client)> ConnectAsync(string? name = null, string? tokenOverride = null,
-            CancellationToken cancellationToken = default) => Task.FromResult((ClientConfiguration.Default().Find(), client));
+            CancellationToken cancellationToken = default) => Task.FromResult<(ServerConnection, IVibeReClient)>((client.Server, client));
     }
 
     private sealed class SwitchingConnector : IServerConnector
