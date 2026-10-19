@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-        <ProjectReference Include="..\VibeRe.Application\VibeRe.Application.csproj"/>
+        <ProjectReference Include="..\VibeRe.Server.Application\VibeRe.Server.Application.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

@@ -1,8 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Application", "VibeRe.Application\VibeRe.Application.csproj", "{73C7A9C3-BF6A-48AD-9C08-3F94C7FE11BA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Server.Application", "VibeRe.Server.Application\VibeRe.Server.Application.csproj", "{73C7A9C3-BF6A-48AD-9C08-3F94C7FE11BA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Infrastructure", "VibeRe.Infrastructure\VibeRe.Infrastructure.csproj", "{B01D077D-13BC-4395-9ACA-D5094BAE2AC9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Server.Infrastructure", "VibeRe.Server.Infrastructure\VibeRe.Server.Infrastructure.csproj", "{B01D077D-13BC-4395-9ACA-D5094BAE2AC9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Desktop", "VibeRe.Desktop\VibeRe.Desktop.csproj", "{D1619E68-8A90-430A-A64F-D083BCED8E7C}"
 EndProject
@@ -10,13 +10,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Cli", "VibeRe.Cli\Vi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Protocol", "VibeRe.Protocol\VibeRe.Protocol.csproj", "{EF7AB8EF-76C8-4B92-A06B-8EACAACB1939}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Client", "VibeRe.Client\VibeRe.Client.csproj", "{838A1A2B-1149-4A57-B506-A6E6B48C3FE3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Client.Infrastructure", "VibeRe.Client.Infrastructure\VibeRe.Client.Infrastructure.csproj", "{838A1A2B-1149-4A57-B506-A6E6B48C3FE3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Server", "VibeRe.Server\VibeRe.Server.csproj", "{1C8A7CFE-2AE9-4BAE-BA65-8D93778ED43B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Application.Tests", "VibeRe.Application.Tests\VibeRe.Application.Tests.csproj", "{AD90D080-99B7-4CE1-8C53-671BED8C1F24}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Server.Application.Tests", "VibeRe.Server.Application.Tests\VibeRe.Server.Application.Tests.csproj", "{AD90D080-99B7-4CE1-8C53-671BED8C1F24}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Infrastructure.Tests", "VibeRe.Infrastructure.Tests\VibeRe.Infrastructure.Tests.csproj", "{E2E2DFF2-687C-4BD7-BD8A-3741F2777E14}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Server.Infrastructure.Tests", "VibeRe.Server.Infrastructure.Tests\VibeRe.Server.Infrastructure.Tests.csproj", "{E2E2DFF2-687C-4BD7-BD8A-3741F2777E14}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VibeRe.Domain", "VibeRe.Domain\VibeRe.Domain.csproj", "{C378CCE8-C2AC-4CD7-AC18-5BB9FB0D530E}"
 EndProject

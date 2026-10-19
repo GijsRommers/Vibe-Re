@@ -1,10 +1,10 @@
 using Latchkey.Extensions.DependencyInjection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using VibeRe.Application.Secrets;
-using VibeRe.Infrastructure.Persistence;
-using VibeRe.Infrastructure.Persistence.Interceptors;
-using VibeRe.Infrastructure.Secrets;
+using VibeRe.Server.Application.Secrets;
+using VibeRe.Server.Infrastructure.Persistence;
+using VibeRe.Server.Infrastructure.Persistence.Interceptors;
+using VibeRe.Server.Infrastructure.Secrets;
 
 namespace VibeRe.Server;
 
