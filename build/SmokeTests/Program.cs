@@ -126,6 +126,17 @@ try
                     catch (TaskCanceledException) { }
                     Require(!stillReady, "Managed server remained live during update reservation");
                     if (app == "cli") await Run(cli, ["--help"], 1, "update");
+                    // Exercise the production server entrypoint, not just the lifecycle helper:
+                    // a direct launch has no managed registration and must still obey its client's gate.
+                    var blockedDatabase = Path.Combine(temp, app + "-blocked-launch.db");
+                    environment["ConnectionStrings__VibeRe"] = "Data Source=" + blockedDatabase;
+                    try
+                    {
+                        await Run(Path.Combine(serverDir, "vibe-re-server" + suffix), ["--urls", address],
+                            null, "another update is in progress");
+                        Require(!File.Exists(blockedDatabase), $"Direct {app}/server launch reached database startup during replacement");
+                    }
+                    finally { environment["ConnectionStrings__VibeRe"] = null; }
                 }
                 // Disposing an un-applied update lease releases startup and preserves the same settings/data.
                 if (app == "desktop")
@@ -170,12 +181,14 @@ Process Start(string file, string[] arguments)
     foreach (var argument in arguments) start.ArgumentList.Add(argument);
     foreach (var item in environment)
         if (item.Value is null) start.Environment.Remove(item.Key); else start.Environment[item.Key] = item.Value;
+    ManagedServerLaunch.ClearInheritedRegistration(start);
     var process = Process.Start(start) ?? throw new Exception("Cannot launch " + file);
     process.StandardInput.Close();
     return process;
 }
 
-async Task Run(string file, string[] arguments, int exitCode, string expected)
+// A null expected exit code means any nonzero failure (unhandled .NET startup failures differ by OS).
+async Task Run(string file, string[] arguments, int? exitCode, string expected)
 {
     using var process = Start(file, arguments);
     // A detached server can retain inherited CLI pipe handles on Windows.
@@ -195,8 +208,9 @@ async Task Run(string file, string[] arguments, int exitCode, string expected)
     await reading.CancelAsync();
     await Task.WhenAll(output, error);
     var message = string.Join(Environment.NewLine, lines);
-    Require(process.ExitCode == exitCode && message.Contains(expected, StringComparison.OrdinalIgnoreCase),
-        $"{Path.GetFileName(file)} {string.Join(' ', arguments)}: exit {process.ExitCode}, expected {exitCode}/{expected}: {message}");
+    var expectedExit = exitCode is int code ? process.ExitCode == code : process.ExitCode != 0;
+    Require(expectedExit && message.Contains(expected, StringComparison.OrdinalIgnoreCase),
+        $"{Path.GetFileName(file)} {string.Join(' ', arguments)}: exit {process.ExitCode}, expected {exitCode?.ToString() ?? "nonzero"}/{expected}: {message}");
 }
 
 async Task Ready(string address)

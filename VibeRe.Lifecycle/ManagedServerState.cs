@@ -52,10 +52,18 @@ internal sealed class ManagedServerState
         return Path.Combine(appData, "VibeRe", "managed-servers");
     }
 
-    private static string ResolveInstallationDirectory(string directory)
+    internal static string ResolveInstallationDirectory(string directory)
     {
         var fullPath = Normalize(directory);
         var parent = Directory.GetParent(fullPath)?.FullName;
+        // A directly launched bundled server must obey the same replacement gate as its
+        // client. A standalone server without a parent client payload keeps its own identity.
+        if (Path.GetFileName(fullPath).Equals("server", PathComparison) && parent is not null
+            && (File.Exists(Path.Combine(parent, "VibeRe.Desktop.dll")) || File.Exists(Path.Combine(parent, "vibe-re.dll"))))
+        {
+            fullPath = Normalize(parent);
+            parent = Directory.GetParent(fullPath)?.FullName;
+        }
         // The desktop distribution contains a nested CLI, but they replace as one installation.
         if (Path.GetFileName(fullPath).Equals("cli", PathComparison) && parent is not null
             && File.Exists(Path.Combine(parent, "VibeRe.Desktop.dll")) && Directory.Exists(Path.Combine(parent, "server")))

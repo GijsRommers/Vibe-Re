@@ -10,6 +10,10 @@ using VibeRe.Server.Services;
 // A manually started or remote server has no managed registration or shutdown IPC.
 // Register before migrations/startup so an update can account for a server still starting.
 using var managedServer = ManagedServerRegistration.TryCreateFromEnvironment();
+// Managed launches already hold the installation gate until registration. Direct launches
+// must check it themselves so a manually started bundled server cannot race replacement.
+if (managedServer is null)
+    ManagedServerShutdownGuard.EnsureUnmanagedServerCanStart(AppContext.BaseDirectory);
 
 // Managed clients can launch from any directory. Keep shipped settings and assets beside the host,
 // while still allowing a separate configuration directory (the packaging host uses the same rule).

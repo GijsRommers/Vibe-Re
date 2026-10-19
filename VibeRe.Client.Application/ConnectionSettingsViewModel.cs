@@ -171,9 +171,11 @@ public partial class ConnectionSettingsViewModel(
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private Task LoginBrowserAsync() => RunAsync(async ct =>
     {
-        var connection = await connector.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
+        var expectedServer = SelectedServer!;
+        var connection = await connector.ConnectAsync(expectedServer.Name, cancellationToken: ct);
         await using var client = connection.Client;
         ct.ThrowIfCancellationRequested();
+        EnsureSameServer(expectedServer, connection.Server);
         var result = await client.LoginWithBrowserAsync(async attempt =>
         {
             ct.ThrowIfCancellationRequested();
@@ -215,8 +217,9 @@ public partial class ConnectionSettingsViewModel(
             Status = "Add a server to connect.";
             return;
         }
-        Status = $"Connecting to {SelectedServer.Name}…";
-        var result = await startup.StartAsync(SelectedServer.Name, cancellationToken: ct);
+        var expectedServer = SelectedServer;
+        Status = $"Connecting to {expectedServer.Name}…";
+        var result = await startup.StartAsync(expectedServer.Name, cancellationToken: ct);
         if (result is ServerOptional)
         {
             ct.ThrowIfCancellationRequested();
@@ -227,19 +230,32 @@ public partial class ConnectionSettingsViewModel(
 
         await using var session = (ServerSession)result;
         ct.ThrowIfCancellationRequested();
+        EnsureSameServer(expectedServer, session.Server);
         ApplyStatus(session.Server.Name, session.Status);
     }
 
     private async Task WithClientAsync(Func<IVibeReClient, CancellationToken, Task<AuthStatus>> action, CancellationToken ct)
     {
+        var expectedServer = SelectedServer!;
         NeedsLogin = false;
         IsSignedIn = false;
-        var connection = await connector.ConnectAsync(SelectedServer!.Name, cancellationToken: ct);
+        var connection = await connector.ConnectAsync(expectedServer.Name, cancellationToken: ct);
         await using var client = connection.Client;
         ct.ThrowIfCancellationRequested();
+        EnsureSameServer(expectedServer, connection.Server);
         var status = await action(client, ct);
         ct.ThrowIfCancellationRequested();
         ApplyStatus(connection.Server.Name, status);
+    }
+
+    private static void EnsureSameServer(ServerConnection expected, ServerConnection actual)
+    {
+        // A profile may be edited or recreated by another client while this UI still displays it.
+        // Never send provider credentials or commands to the replacement merely because its name matches.
+        if (actual.Id != expected.Id ||
+            global::VibeRe.Client.Application.ServerAddress.Normalize(actual.Address) !=
+            global::VibeRe.Client.Application.ServerAddress.Normalize(expected.Address))
+            throw new ServerConnectionException("The server settings changed. Reopen the app before trying again.");
     }
 
     private void ApplyStatus(string serverName, AuthStatus status)

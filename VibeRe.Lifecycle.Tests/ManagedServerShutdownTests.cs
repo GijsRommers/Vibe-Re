@@ -89,6 +89,34 @@ public sealed class ManagedServerShutdownTests : IDisposable
     }
 
     [Fact]
+    public async Task RecycledServerPidRemovesOnlyStaleRecordAndNeverSignalsNewOccupant()
+    {
+        var server = AddServer();
+        processes.Live[server.ProcessId] = new(server.ProcessId, "utc:99", Path.Combine(root, "unrelated-process"));
+        processes.UsingInstallation.Clear();
+        await using var lease = await Guard().AcquireUpdateLeaseAsync();
+        Assert.Empty(shutdown.Requests);
+        Assert.Empty(processes.Waited);
+        Assert.True(processes.Live.ContainsKey(server.ProcessId));
+        Assert.False(File.Exists(state.DescriptorPath(server.PipeName)));
+    }
+
+    [Fact]
+    public async Task RecycledPidRunningAnotherInstalledServerStillBlocksUpdateWithoutShutdown()
+    {
+        var server = AddServer();
+        var replacement = new ManagedProcessIdentity(server.ProcessId, "utc:99", server.ExecutablePath);
+        processes.Live[server.ProcessId] = replacement;
+        processes.UsingInstallation.Clear();
+        processes.UsingInstallation.Add(replacement);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Guard().AcquireUpdateLeaseAsync());
+        Assert.Empty(shutdown.Requests);
+        Assert.Empty(processes.Waited);
+        Assert.False(File.Exists(state.DescriptorPath(server.PipeName)));
+        Assert.False(File.Exists(state.UpdatePath));
+    }
+
+    [Fact]
     public async Task StartupReservationWithoutIdentityBlocksUpdate()
     {
         var pipe = NewPipe();
@@ -108,6 +136,19 @@ public sealed class ManagedServerShutdownTests : IDisposable
             Path.Combine(state.InstallationDirectory, "server"), 100, "utc:1", 101, "utc:2"));
         await using var lease = await Guard().AcquireUpdateLeaseAsync();
         Assert.False(File.Exists(state.PendingPath(pipe)));
+    }
+
+    [Fact]
+    public async Task RecycledStartupPidDoesNotBlockOrSignalUnrelatedProcess()
+    {
+        var pipe = NewPipe();
+        state.Write(state.PendingPath(pipe), new PendingServerLaunch(1, state.InstallationId, pipe,
+            Path.Combine(state.InstallationDirectory, "server"), 100, "utc:1", 101, "utc:2"));
+        processes.Live[101] = new(101, "utc:99", Path.Combine(root, "unrelated-process"));
+        await using var lease = await Guard().AcquireUpdateLeaseAsync();
+        Assert.False(File.Exists(state.PendingPath(pipe)));
+        Assert.Empty(shutdown.Requests);
+        Assert.True(processes.Live.ContainsKey(101));
     }
 
     [Fact]
@@ -162,6 +203,47 @@ public sealed class ManagedServerShutdownTests : IDisposable
         File.WriteAllText(Path.Combine(state.InstallationDirectory, "VibeRe.Desktop.dll"), "fixture");
         var cli = new ManagedServerState(Path.Combine(state.InstallationDirectory, "cli"), Path.Combine(root, "state"), "", "");
         Assert.Equal(state.InstallationId, cli.InstallationId);
+    }
+
+    [Theory]
+    [InlineData("server")]
+    [InlineData("cli/server")]
+    public async Task DirectBundledServerSharesDesktopReplacementGate(string relativeDirectory)
+    {
+        Directory.CreateDirectory(Path.Combine(state.InstallationDirectory, "server"));
+        Directory.CreateDirectory(Path.Combine(state.InstallationDirectory, "cli", "server"));
+        File.WriteAllText(Path.Combine(state.InstallationDirectory, "VibeRe.Desktop.dll"), "fixture");
+        File.WriteAllText(Path.Combine(state.InstallationDirectory, "cli", "vibe-re.dll"), "fixture");
+        var server = new ManagedServerState(Path.Combine(state.InstallationDirectory, relativeDirectory),
+            Path.Combine(root, "state"), "", "");
+        Assert.Equal(state.InstallationId, server.InstallationId);
+        Assert.Equal(state.UpdatePath, server.UpdatePath);
+        await using var lease = await Guard().AcquireUpdateLeaseAsync();
+        Assert.Throws<InvalidOperationException>(() => server.AcquireGate());
+        Assert.Throws<InvalidOperationException>(() => server.ThrowIfUpdatePending());
+    }
+
+    [Fact]
+    public void BundledServerSharesStandaloneCliIdentityWithoutAdoptingSiblingInstallation()
+    {
+        var cliDirectory = Path.Combine(root, "cli-only");
+        Directory.CreateDirectory(Path.Combine(cliDirectory, "server"));
+        File.WriteAllText(Path.Combine(cliDirectory, "vibe-re.dll"), "fixture");
+        var cli = new ManagedServerState(cliDirectory, Path.Combine(root, "state"), "", "");
+        var server = new ManagedServerState(Path.Combine(cliDirectory, "server"), Path.Combine(root, "state"), "", "");
+        Assert.Equal(cli.InstallationId, server.InstallationId);
+        Assert.NotEqual(state.InstallationId, server.InstallationId);
+    }
+
+    [Fact]
+    public void UnrelatedStandaloneServerKeepsItsOwnInstallationIdentity()
+    {
+        var directory = Path.Combine(state.InstallationDirectory, "server");
+        Directory.CreateDirectory(directory);
+        var server = new ManagedServerState(directory, Path.Combine(root, "state"), "", "");
+        Assert.Equal(ManagedServerState.Normalize(directory), server.InstallationDirectory);
+        Assert.NotEqual(state.InstallationId, server.InstallationId);
+        ManagedServerShutdownGuard.EnsureUnmanagedServerCanStart(directory);
     }
 
     [Fact]
@@ -305,6 +387,70 @@ public sealed class ManagedServerShutdownTests : IDisposable
         WriteMarker(ManagedServerState.BuildIdentity);
         ManagedServerShutdownGuard.RecoverInterruptedUpdate(state, processes);
         Assert.False(File.Exists(state.UpdatePath));
+        Assert.Empty(shutdown.Requests);
+    }
+
+    [Fact]
+    public void ExplicitRecoveryClearsOrphanReservationWithoutAnUpdateMarker()
+    {
+        var pipe = NewPipe();
+        state.Write(state.PendingPath(pipe), new PendingServerLaunch(1, state.InstallationId, pipe,
+            Path.Combine(state.InstallationDirectory, "server"), 100, "utc:1"));
+        ManagedServerShutdownGuard.RecoverInterruptedUpdate(state, processes);
+        Assert.False(File.Exists(state.PendingPath(pipe)));
+        Assert.Empty(shutdown.Requests);
+    }
+
+    [Theory]
+    [InlineData("launcher")]
+    [InlineData("child")]
+    [InlineData("installed")]
+    [InlineData("updater")]
+    [InlineData("inspection")]
+    public void ExplicitRecoveryRetainsOrphanReservationWhenQuiescenceCannotBeConfirmed(string blocker)
+    {
+        var pipe = NewPipe();
+        state.Write(state.PendingPath(pipe), new PendingServerLaunch(1, state.InstallationId, pipe,
+            Path.Combine(state.InstallationDirectory, "server"), 100, "utc:1", 101, "utc:2"));
+        if (blocker == "launcher") processes.Live[100] = new(100, "utc:1", Path.Combine(root, "launcher"));
+        // A still-starting shell may not yet appear in the installation-path scan.
+        if (blocker == "child") processes.Live[101] = new(101, "utc:2", Path.Combine(root, "shell"));
+        if (blocker == "installed") processes.UsingInstallation.Add(new(999, "utc:3", Path.Combine(state.InstallationDirectory, "server")));
+        if (blocker == "updater") processes.UpdaterRunning = true;
+        if (blocker == "inspection") processes.FailInspection = true;
+        WriteMarker("fixture");
+        Assert.Throws<InvalidOperationException>(() => ManagedServerShutdownGuard.RecoverInterruptedUpdate(state, processes));
+        Assert.True(File.Exists(state.PendingPath(pipe)));
+        Assert.True(File.Exists(state.UpdatePath));
+        Assert.Empty(shutdown.Requests);
+    }
+
+    [Fact]
+    public void ExplicitRecoveryDoesNotSignalRecycledLauncherOrChildPids()
+    {
+        var pipe = NewPipe();
+        state.Write(state.PendingPath(pipe), new PendingServerLaunch(1, state.InstallationId, pipe,
+            Path.Combine(state.InstallationDirectory, "server"), 100, "utc:1", 101, "utc:2"));
+        processes.Live[100] = new(100, "utc:98", Path.Combine(root, "unrelated-one"));
+        processes.Live[101] = new(101, "utc:99", Path.Combine(root, "unrelated-two"));
+        ManagedServerShutdownGuard.RecoverInterruptedUpdate(state, processes);
+        Assert.False(File.Exists(state.PendingPath(pipe)));
+        Assert.Equal(2, processes.Live.Count);
+        Assert.Empty(shutdown.Requests);
+    }
+
+    [Fact]
+    public void ExplicitRecoveryValidatesAllReservationsBeforeDeletingAny()
+    {
+        var orphan = NewPipe();
+        state.Write(state.PendingPath(orphan), new PendingServerLaunch(1, state.InstallationId, orphan,
+            Path.Combine(state.InstallationDirectory, "server"), 100, "utc:1"));
+        var invalid = NewPipe();
+        state.Write(state.PendingPath(invalid), new PendingServerLaunch(1, "other-installation", invalid,
+            Path.Combine(state.InstallationDirectory, "server"), 100, "utc:1"));
+        Assert.Throws<InvalidOperationException>(() => ManagedServerShutdownGuard.RecoverInterruptedUpdate(state, processes));
+        Assert.True(File.Exists(state.PendingPath(orphan)));
+        Assert.True(File.Exists(state.PendingPath(invalid)));
         Assert.Empty(shutdown.Requests);
     }
 

@@ -82,6 +82,15 @@ public sealed class ManagedServerShutdownGuard : IServerShutdownGuard
         state.ThrowIfUpdatePending();
     }
 
+    /// <summary>Direct bundled servers obey their client's gate; unrelated standalone servers need no client state.</summary>
+    public static void EnsureUnmanagedServerCanStart(string serverDirectory)
+    {
+        var directory = ManagedServerState.Normalize(serverDirectory);
+        var installation = ManagedServerState.ResolveInstallationDirectory(directory);
+        if (!installation.Equals(directory, ManagedServerState.PathComparison))
+            EnsureApplicationCanStart(installation);
+    }
+
     private List<(ManagedServerDescriptor, ManagedProcessIdentity)> ReadOwnedServers()
     {
         foreach (var path in Directory.EnumerateFiles(state.DirectoryPath, "*.pending"))
@@ -91,9 +100,10 @@ public sealed class ManagedServerShutdownGuard : IServerShutdownGuard
             if (pending.Protocol != ManagedServerState.ProtocolVersion || pending.InstallationId != state.InstallationId)
                 throw UnverifiedOwnership();
             if (File.Exists(state.DescriptorPath(pending.PipeName))) continue;
-            if (pending.ProcessId is int pid && pending.StartIdentity is not null && processes.Inspect(pid) is null)
+            if (pending.ProcessId is int pid && pending.StartIdentity is not null
+                && RecordedProcessHasExited(processes, pid, pending.StartIdentity))
             { File.Delete(path); continue; }
-            throw new InvalidOperationException("A local server launch has not confirmed ownership yet. Wait for startup to finish, or close that server yourself, before updating.");
+            throw new InvalidOperationException("A local server launch has not confirmed ownership yet. Wait for startup to finish, or close that server yourself, before updating. If startup was interrupted, finish reinstalling the app, close all VibeRe processes, then run the desktop app with --repair-update.");
         }
         var result = new List<(ManagedServerDescriptor, ManagedProcessIdentity)>();
         foreach (var path in Directory.EnumerateFiles(state.DirectoryPath, "vibere-*.json"))
@@ -106,7 +116,10 @@ public sealed class ManagedServerShutdownGuard : IServerShutdownGuard
                 || (!state.IsAppImage && !descriptor.InstallationDirectory.Equals(state.InstallationDirectory, ManagedServerState.PathComparison)))
                 throw UnverifiedOwnership();
             var identity = processes.Inspect(descriptor.ProcessId);
-            if (identity is null) { File.Delete(path); File.Delete(state.PendingPath(descriptor.PipeName)); continue; }
+            // A recycled PID is not the recorded server. Remove only the stale record; never
+            // send shutdown to its new occupant. The installation scan still catches any new app.
+            if (identity is null || (identity.ProcessId == descriptor.ProcessId && identity.StartIdentity != descriptor.StartIdentity))
+            { File.Delete(path); File.Delete(state.PendingPath(descriptor.PipeName)); continue; }
             VerifyProcess(descriptor, identity);
             result.Add((descriptor, identity));
         }
@@ -122,6 +135,14 @@ public sealed class ManagedServerShutdownGuard : IServerShutdownGuard
     private static InvalidOperationException UnverifiedOwnership() => new(
         "The local server's ownership could not be verified. Close it yourself before updating; user-managed servers are never stopped automatically.");
 
+    private static bool RecordedProcessHasExited(IManagedProcessInspector processes, int processId, string startIdentity)
+    {
+        var process = processes.Inspect(processId);
+        if (process is null) return true;
+        if (process.ProcessId != processId) throw UnverifiedOwnership();
+        return process.StartIdentity != startIdentity;
+    }
+
     /// <summary>
     /// Explicit recovery only, after the user has completed reinstalling/repairing the installation.
     /// Does not stop processes. Refuses while other installed applications or known updater hosts run.
@@ -132,14 +153,36 @@ public sealed class ManagedServerShutdownGuard : IServerShutdownGuard
     internal static void RecoverInterruptedUpdate(ManagedServerState state, IManagedProcessInspector processes)
     {
         using var gate = state.AcquireGate();
-        if (!File.Exists(state.UpdatePath)) return;
-        var marker = state.Read<PendingApplicationUpdate>(state.UpdatePath);
-        if (marker.Protocol != ManagedServerState.ProtocolVersion || marker.InstallationId != state.InstallationId) throw UnverifiedOwnership();
+        var hasUpdate = File.Exists(state.UpdatePath);
+        var pendingPaths = Directory.GetFiles(state.DirectoryPath, "*.pending");
+        if (!hasUpdate && pendingPaths.Length == 0) return;
+        if (hasUpdate)
+        {
+            var marker = state.Read<PendingApplicationUpdate>(state.UpdatePath);
+            if (marker.Protocol != ManagedServerState.ProtocolVersion || marker.InstallationId != state.InstallationId) throw UnverifiedOwnership();
+        }
+        // Ordinary update attempts cannot infer a child identity after a launcher crash. Only
+        // explicit recovery, after completed reinstall and with all installed processes closed,
+        // may reconcile an orphan reservation. Validate every record before deleting anything.
+        foreach (var path in pendingPaths)
+        {
+            var pending = state.Read<PendingServerLaunch>(path);
+            ManagedServerState.ValidatePipe(pending.PipeName);
+            if (pending.Protocol != ManagedServerState.ProtocolVersion || pending.InstallationId != state.InstallationId
+                || !Path.GetFileName(path).Equals(pending.PipeName + ".pending", StringComparison.Ordinal))
+                throw UnverifiedOwnership();
+            if (!RecordedProcessHasExited(processes, pending.LauncherProcessId, pending.LauncherStartIdentity))
+                throw new InvalidOperationException("A local server launcher is still running. Close it before repairing VibeRe's update state.");
+            if (pending.ProcessId is int processId
+                && (pending.StartIdentity is null || !RecordedProcessHasExited(processes, processId, pending.StartIdentity)))
+                throw new InvalidOperationException("A local server launch is still running or cannot be verified. Close it before repairing VibeRe's update state.");
+        }
         if (processes.HasPotentialUpdater())
             throw new InvalidOperationException("An installer or updater is still running. Wait for it to finish before repairing VibeRe's update state.");
         if (processes.FindProcessesUsingInstallation(state.InstallationDirectory, state.AppImagePath).Any(process => process.ProcessId != Environment.ProcessId))
             throw new InvalidOperationException("Close all other VibeRe windows, CLI commands, and local servers from this installation before repairing its update state. No process was stopped.");
-        File.Delete(state.UpdatePath);
+        foreach (var path in pendingPaths) File.Delete(path);
+        if (hasUpdate) File.Delete(state.UpdatePath);
     }
 
     /// <summary>Call only from Velopack's successful post-update restart hook, before client startup.</summary>
