@@ -20,22 +20,29 @@ public class ServerReadinessTests
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var response = RespondAsync();
+        using var stop = timeout.Token.Register(listener.Stop);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // A dedicated responder avoids ThreadPool starvation consuming the product's one-second
+        // readiness budget before this fixture writes the response body we intend to validate.
+        var response = Task.Factory.StartNew(Respond, timeout.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        await ready.Task.WaitAsync(timeout.Token);
 
         Assert.Equal(expected, await new ServerReadinessProbe().IsReadyAsync(new($"http://127.0.0.1:{port}"), timeout.Token));
         await response;
 
-        async Task RespondAsync()
+        void Respond()
         {
-            using var socket = await listener.AcceptTcpClientAsync(timeout.Token);
-            await using var stream = socket.GetStream();
+            ready.SetResult();
+            using var socket = listener.AcceptTcpClient();
+            socket.ReceiveTimeout = socket.SendTimeout = 5000;
+            using var stream = socket.GetStream();
             using var reader = new StreamReader(stream, leaveOpen: true);
-            Assert.Equal("GET /.well-known/vibe-re/server HTTP/1.1", await reader.ReadLineAsync(timeout.Token));
-            while (!string.IsNullOrEmpty(await reader.ReadLineAsync(timeout.Token))) { }
+            Assert.Equal("GET /.well-known/vibe-re/server HTTP/1.1", reader.ReadLine());
+            while (!string.IsNullOrEmpty(reader.ReadLine())) { }
             var payload = Encoding.UTF8.GetBytes(body);
-            await stream.WriteAsync(Encoding.ASCII.GetBytes(
-                $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {payload.Length}\r\nConnection: close\r\n\r\n"), timeout.Token);
-            await stream.WriteAsync(payload, timeout.Token);
+            var headers = Encoding.ASCII.GetBytes(
+                $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
+            stream.Write([.. headers, .. payload]);
         }
     }
 }
