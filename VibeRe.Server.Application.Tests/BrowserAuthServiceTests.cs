@@ -61,6 +61,42 @@ public class BrowserAuthServiceTests
     }
 
     [Fact]
+    public async Task ExpiryCleanupCannotDetachAnExchangeFromProviderLogout()
+    {
+        var fixture = new AuthServiceTests.Fixture();
+        var clock = new Clock();
+        var flow = new BrowserFlow(clock)
+        {
+            ExchangeResult = new(TaskCreationOptions.RunContinuationsAsynchronously)
+        };
+        var browser = new BrowserAuthService([flow], fixture.Auth, clock);
+        var start = await browser.StartAsync("mistral");
+        var polling = browser.PollAsync(start.AttemptId);
+        await flow.ExchangeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // A new attempt cleans up expired entries while the old provider exchange is still active.
+        clock.Now = clock.Now.AddMinutes(6);
+        await browser.StartAsync("mistral");
+        var logout = LogoutAsync();
+        // All fake-store operations complete synchronously. The only reason logout can be pending
+        // is that it still knows about, and is waiting for, the blocked exchange.
+        var logoutCompletedBeforeExchange = logout.IsCompleted;
+        flow.ExchangeResult.SetResult("browser-key");
+        await polling.WaitAsync(TimeSpan.FromSeconds(5));
+        await logout.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Null(await fixture.Resolver.ResolveAsync("mistral"));
+        Assert.False(logoutCompletedBeforeExchange,
+            "Logout must not finish while an evicted browser attempt can still save a credential.");
+
+        async Task LogoutAsync()
+        {
+            await browser.CancelProviderAsync("mistral");
+            await fixture.Auth.LogoutAsync("mistral");
+        }
+    }
+
+    [Fact]
     public async Task TerminalAttemptsDoNotConsumePendingLoginCapacity()
     {
         var fixture = new AuthServiceTests.Fixture();
@@ -107,6 +143,8 @@ public class BrowserAuthServiceTests
         public int Polls { get; private set; }
         public string? Challenge { get; private set; }
         public string? Verifier { get; private set; }
+        public TaskCompletionSource ExchangeStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<string>? ExchangeResult { get; init; }
         public Task<BrowserProcess> StartAsync(string challenge, CancellationToken cancellationToken)
         {
             Challenge = challenge;
@@ -122,7 +160,8 @@ public class BrowserAuthServiceTests
         {
             Exchanges++;
             Verifier = verifier;
-            return Task.FromResult("browser-key");
+            ExchangeStarted.TrySetResult();
+            return ExchangeResult?.Task.WaitAsync(cancellationToken) ?? Task.FromResult("browser-key");
         }
     }
 }
