@@ -43,7 +43,19 @@ public sealed class BrowserAuthService(IEnumerable<IBrowserAuthFlow> flows, IAut
         var now = time.GetUtcNow();
         foreach (var entry in _attempts.Where(x => x.Value.Status.ExpiresAt <= now))
         {
-            _attempts.TryRemove(entry.Key, out _);
+            // An in-flight exchange can still save a credential. Keep it discoverable until it
+            // releases its gate, so provider logout can wait for it before removing credentials.
+            if (!entry.Value.Gate.Wait(0)) continue;
+            try
+            {
+                if (entry.Value.Status.State == BrowserAttemptState.Waiting)
+                    entry.Value.Finish(BrowserAttemptState.Expired, "Browser login expired. Start again.");
+                _attempts.TryRemove(entry.Key, out _);
+            }
+            finally
+            {
+                entry.Value.Gate.Release();
+            }
         }
 
         if (_attempts.Count(x => x.Value.Status.State == BrowserAttemptState.Waiting) >= MaxPendingAttempts)
