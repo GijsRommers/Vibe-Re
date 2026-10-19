@@ -1,0 +1,50 @@
+syntax = "proto3";
+option csharp_namespace = "VibeRe.Protocol";
+package vibere;
+
+// All clients invoke these actions on the selected server. Secrets never appear in responses.
+service ProviderAuth {
+  rpc Login (LoginRequest) returns (AuthStatusReply);
+  rpc GetStatus (ProviderRequest) returns (AuthStatusReply);
+  rpc Logout (ProviderRequest) returns (AuthStatusReply);
+  rpc StartBrowserLogin (ProviderRequest) returns (BrowserLoginReply);
+  rpc PollBrowserLogin (BrowserAttemptRequest) returns (BrowserLoginReply);
+  rpc CancelBrowserLogin (BrowserAttemptRequest) returns (BrowserLoginReply);
+}
+
+message LoginRequest {
+  string provider = 1;
+  string api_key = 2;
+}
+
+message ProviderRequest { string provider = 1; }
+
+enum AuthState {
+  SIGNED_OUT = 0;
+  AUTHENTICATED = 1;
+  INVALID_CREDENTIAL = 2;
+  SUBSCRIPTION_REQUIRED = 3;
+  UNAVAILABLE = 4;
+}
+
+message AuthStatusReply {
+  AuthState state = 1;
+  string message = 2;
+}
+
+message BrowserAttemptRequest { string attempt_id = 1; }
+enum BrowserLoginState {
+  WAITING = 0;
+  COMPLETED = 1;
+  FAILED = 2;
+  EXPIRED = 3;
+  CANCELED = 4;
+}
+message BrowserLoginReply {
+  string attempt_id = 1;
+  string sign_in_url = 2;
+  int64 expires_at_unix_seconds = 3;
+  BrowserLoginState state = 4;
+  string message = 5;
+  AuthStatusReply auth_status = 6;
+}

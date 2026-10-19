@@ -5,24 +5,40 @@ using VibeRe.Server.Application.Secrets;
 using VibeRe.Server.Infrastructure.Persistence;
 using VibeRe.Server.Infrastructure.Persistence.Interceptors;
 using VibeRe.Server.Infrastructure.Secrets;
+using VibeRe.Server.Application.Providers.Auth;
+using VibeRe.Server.Application.Providers.Profiles;
+using VibeRe.Server.Infrastructure.Providers.Mistral.Auth;
 
 namespace VibeRe.Server;
 
 internal static class DependencyInjection
 {
-    public static IServiceCollection AddVibeReServices(this IServiceCollection services)
+    public static IServiceCollection AddVibeReServices(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<TimestampedEntityInterceptor>();
 
-        services.AddDbContext<VibeReDbContext>((sp, options) =>
+        services.AddDbContextFactory<VibeReDbContext>((sp, options) =>
         {
-            options.UseSqlite(DatabaseConnectionString());
+            options.UseSqlite(configuration.GetConnectionString("VibeRe") ?? DatabaseConnectionString());
             options.AddInterceptors(sp.GetRequiredService<TimestampedEntityInterceptor>());
         });
 
         services.AddLatchkey("dev.vibe-re");
         services.AddSingleton<ISecretStore, LatchkeySecretStore>();
+        services.AddSingleton<IProfileRepository, ProfileRepository>();
+        services.AddSingleton<IProviderCredentialStore, ProviderCredentialStore>();
+        services.AddSingleton<ICredentialResolver>(sp => sp.GetRequiredService<IProviderCredentialStore>());
+        services.AddHttpClient<MistralAuthFlow>(client => client.Timeout = TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddHttpClient<MistralBrowserAuthFlow>(client => client.Timeout = TimeSpan.FromSeconds(20))
+            .RemoveAllLoggers()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddSingleton<IAuthFlow>(sp => sp.GetRequiredService<MistralAuthFlow>());
+        services.AddSingleton<IBrowserAuthFlow>(sp => sp.GetRequiredService<MistralBrowserAuthFlow>());
+        services.AddSingleton<IAuthService, AuthService>();
+        services.AddSingleton<IBrowserAuthService, BrowserAuthService>();
 
         return services;
     }
