@@ -1,6 +1,6 @@
 # VibeRe
 
-VibeRe runs provider authentication on the server. CLI, Avalonia desktop, and MAUI mobile use the same gRPC contract. `VibeRe.Client.Application` shares startup, settings policy, and presentation state; `VibeRe.Client.Infrastructure` implements storage and server transport. Clients can save multiple named servers and choose an active server. Each server owns its Mistral credentials; logging in from one client is visible to other clients connected to that server.
+VibeRe runs provider authentication on the server. CLI, Avalonia desktop, and MAUI mobile use the same SignalR API and shared JSON DTOs in `VibeRe.Contracts`. `VibeRe.Client.Application` shares startup, settings policy, and presentation state; `VibeRe.Client.Infrastructure` implements storage and server transport. Clients can save multiple named servers and choose an active server. Each server owns its Mistral credentials; logging in from one client is visible to other clients connected to that server.
 
 ## Run locally
 
@@ -11,7 +11,7 @@ dotnet run --project VibeRe.Cli
 dotnet run --project VibeRe.Desktop
 ```
 
-The CLI and desktop create and select a `local` connection at `http://localhost:5067`, with automatic local startup enabled. They probe the server's HTTP/2 readiness endpoint, reuse a running VibeRe server, or start it and wait for readiness. A shared launch lock avoids duplicate startup across clients. An unrelated process on the port produces a connection error. Use **Refresh connection** to retry after a server stops or startup is canceled.
+The CLI and desktop create and select a `local` connection at `http://localhost:5067`, with automatic local startup enabled. They probe the server's HTTP readiness endpoint, reuse a running VibeRe server, or start it and wait for readiness. A shared launch lock avoids duplicate startup across clients. An unrelated process on the port produces a connection error. Use **Refresh connection** to retry after a server stops or startup is canceled.
 
 This follows [T3's local/remote connection flow](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md): local is available by default, connection settings belong to the client, and remote-only use does not depend on a local server. Select a remote connection to use it directly. Turn off **Start this server locally when needed** to manage a local server yourself; this changes future startup behavior and leaves an already running server running.
 
@@ -39,7 +39,7 @@ Desktop and mobile expose these same actions. Browser login opens Mistral on the
 
 Both login methods converge on `IAuthService.LoginAsync`: validate the credential, save it in the server's secret store, and persist a credential reference in SQLite. A rejected or unverifiable key does not replace a working key. A `402` billing response is retained as `SubscriptionRequired`, rather than prompting for repeated login. Status rechecks the provider; it is not merely a check for a stored value.
 
-Browser attempts expire, can be canceled, and are lost when the server restarts. Logging out removes the stored key and cancels pending browser attempts on that server. Removing a client connection only removes that client's connection settings and access token.
+Browser attempts expire, can be canceled, and are lost when the server restarts. SignalR streams their status from the server. A disconnected client can watch the same attempt again; disconnecting stops observation without canceling an in-flight provider exchange. Native clients reconnect and resume that observation without replaying API-key login or creating another attempt. Explicit cancellation asks the server to cancel, with a bounded two-second client cleanup wait. A lost connection may leave a pending attempt until its expiry; refresh server status before retrying a request whose result was interrupted. Logging out removes the stored key and cancels pending browser attempts on that server. Removing a client connection only removes that client's connection settings and access token.
 
 Mistral browser sign-in follows the [official Vibe implementation](https://github.com/mistralai/mistral-vibe/blob/main/vibe/setup/auth/http_browser_sign_in_gateway.py), including server-side PKCE exchange. Credential validation checks the [Mistral models endpoint](https://docs.mistral.ai/api/endpoint/models), with Mistral account lookup for browser-issued credentials that the main API rejects. Browser endpoints are provider-specific and can change.
 
@@ -77,7 +77,11 @@ The client database contains names, addresses, IDs, token-presence flags, the ac
 
 Remote connections require HTTPS and a server access token. Configure `Server__AccessToken` on the server and enter the same token in each client. This token grants access to the server's authentication actions; it is separate from the Mistral API key. If it is configured, local clients must supply it too. Without it, the server accepts only loopback clients.
 
-Bind the server to an HTTPS endpoint with `ASPNETCORE_URLS` and configure a trusted certificate through Kestrel or a reverse proxy that supports gRPC/HTTP/2. Clients verify certificates and do not follow redirects. Provider browser polling URLs are restricted to Mistral's HTTPS console origin, and HTTP client logging for provider authentication is disabled to keep polling tokens out of logs.
+Bind a second-PC server to an HTTPS endpoint with `ASPNETCORE_URLS` and a trusted Kestrel certificate. Remote access requires HTTPS and a server access token; plaintext HTTP is allowed only when both the peer and Host are loopback. A reverse proxy must support WebSockets and use HTTPS upstream, or have explicitly trusted forwarded-header handling configured by the deployer; the app does not trust forwarded headers by default. Native clients verify certificates and connect directly over WebSockets without following negotiation or HTTP-upgrade redirects. Provider browser polling URLs are restricted to Mistral's HTTPS console origin, and HTTP client logging for provider authentication is disabled to keep polling tokens out of logs.
+
+The versioned hub is `/hubs/v1/auth`; readiness at `/.well-known/vibe-re/server` identifies protocol version 2 and transport `signalr`. Upgrade clients and servers together: the former protocol-1 server is not compatible. The hub exposes `Login(apiKey)`, `GetStatus()`, `Logout()`, `StartBrowserLogin()`, `WatchBrowserLogin(attemptId)` (server stream), and `CancelBrowserLogin(attemptId)`. Authentication DTOs contain status, messages, an opaque attempt ID/expiry, and the verification URL, never provider credentials or PKCE secrets.
+
+A future browser UI can use the standard SignalR JavaScript client against this same endpoint. Browser requests must be same-origin, including WebSocket upgrades; no cross-origin access is enabled. Bearer headers are accepted on ordinary requests, with query tokens limited to browser WebSocket connections or SSE GET requests. The server suppresses request/frame logging that could contain tokens; configure any proxy to redact query strings too. No web UI is included yet. Native clients require WebSocket support; HTTP long polling is also exercised by integration tests through an injected HTTP handler.
 
 On a physical phone, `localhost` refers to the phone. Add your server's reachable HTTPS address in the mobile UI and configure its access token. Connection lists are local to each device; they are not synchronized between devices.
 
@@ -111,11 +115,11 @@ The mobile project targets Android on Windows/Linux and adds iOS on macOS. Build
 The projects separate application policy from IO on each side:
 
 - `VibeRe.Server.Application`: authentication use cases and the repository/secret-store contracts they need.
-- `VibeRe.Server.Infrastructure`: model-provider adapters, persistence, and credential-store implementations. The `VibeRe.Server` host composes these and exposes gRPC.
-- `VibeRe.Client.Application`: startup/login presentation state, settings policy, transport-independent authentication results, and small IO contracts. It has no database, process, filesystem, gRPC, or infrastructure dependency.
-- `VibeRe.Client.Infrastructure`: SQLite settings, keyring, browser/process/readiness adapters, and gRPC server transport. It depends on Client.Application, never the reverse. The former Client and Runtime projects are replaced by these two layers.
+- `VibeRe.Server.Infrastructure`: model-provider adapters, persistence, and credential-store implementations. The `VibeRe.Server` host composes these and exposes the SignalR hub.
+- `VibeRe.Client.Application`: startup/login presentation state, settings policy, transport-independent authentication results, and small IO contracts. It has no database, process, filesystem, SignalR, or infrastructure dependency.
+- `VibeRe.Client.Infrastructure`: SQLite settings, keyring, browser/process/readiness adapters, and SignalR server transport. It depends on Client.Application, never the reverse. The former Client and Runtime projects are replaced by these two layers. The former Protocol project is replaced by `VibeRe.Contracts`, a dependency-free set of versioned wire DTOs and endpoint constants shared only by the transport adapters.
 
-CLI and desktop reuse the infrastructure adapters. Mobile supplies its own browser/secure-storage implementations and app-data path at the host's `AddVibeReClient` call. Transport errors and cancellation are translated at the infrastructure boundary, so shared application and presentation code never handles gRPC exceptions. Provider credentials remain server-owned; these project moves do not change the database format or require data conversion. ACP is not implemented by this change.
+CLI and desktop reuse the infrastructure adapters. Mobile supplies its own browser/secure-storage implementations and app-data path at the host's `AddVibeReClient` call. Transport errors and cancellation are translated at the infrastructure boundary, so shared application and presentation code never handles transport-specific exceptions. Provider credentials remain server-owned; these project moves do not change the database format or require data conversion. ACP is not implemented by this change.
 
 Inject `VibeRe.Client.Application.Configuration.IClientConfigurationStore` to read a snapshot:
 
