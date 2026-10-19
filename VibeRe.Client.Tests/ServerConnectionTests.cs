@@ -1,0 +1,282 @@
+using VibeRe.Client.Infrastructure.Configuration;
+using VibeRe.Client.Infrastructure;
+using VibeRe.Client.Application;
+using VibeRe.Client.Infrastructure.Adapters;
+using VibeRe.Client.Application.Configuration;
+using Microsoft.Data.Sqlite;
+
+namespace VibeRe.Client.Tests;
+
+public sealed class ServerConnectionTests : IDisposable
+{
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "vibere-client-" + Guid.NewGuid());
+    private string ConfigPath => Path.Combine(_directory, "client.db");
+
+    [Fact]
+    public async Task StartupMigrationPreservesRemoteSelectionAndExistingConnectionIds()
+    {
+        Directory.CreateDirectory(_directory);
+        var localId = Guid.NewGuid();
+        var remoteId = Guid.NewGuid();
+        using (var db = new SqliteConnection($"Data Source={ConfigPath};Pooling=False"))
+        {
+            await db.OpenAsync();
+            using var schema = db.CreateCommand();
+            schema.CommandText = """
+                CREATE TABLE ClientServers (Id TEXT PRIMARY KEY, Name TEXT UNIQUE, Address TEXT, HasAccessToken INTEGER, Position INTEGER);
+                CREATE TABLE ClientSettings (Id INTEGER PRIMARY KEY, ActiveServerId TEXT REFERENCES ClientServers(Id));
+                INSERT INTO ClientServers VALUES ($local, 'local', 'http://localhost:5067', 0, 0);
+                INSERT INTO ClientServers VALUES ($remote, 'work', 'https://work.example', 1, 1);
+                INSERT INTO ClientSettings VALUES (1, $remote);
+                PRAGMA user_version = 1;
+                """;
+            schema.Parameters.AddWithValue("$local", localId.ToString("D"));
+            schema.Parameters.AddWithValue("$remote", remoteId.ToString("D"));
+            await schema.ExecuteNonQueryAsync();
+        }
+        var config = await new ClientConnectionDatabase(ConfigPath).LoadAsync();
+        Assert.True(config.ServerRequired);
+        Assert.Equal("work", config.ActiveServer);
+        Assert.Equal(remoteId, config.Find().Id);
+        Assert.True(config.Find().HasAccessToken);
+        Assert.False(config.Find().StartLocally);
+        Assert.Equal(localId, config.Find("local").Id);
+        Assert.True(config.Find("local").StartLocally);
+    }
+
+    [Fact]
+    public async Task VersionTwoMigrationPreservesAllProfilesAndDefaultsToServerRequired()
+    {
+        Directory.CreateDirectory(_directory);
+        var localId = Guid.NewGuid();
+        var remoteId = Guid.NewGuid();
+        using (var db = new SqliteConnection($"Data Source={ConfigPath};Pooling=False"))
+        {
+            await db.OpenAsync();
+            using var schema = db.CreateCommand();
+            schema.CommandText = """
+                CREATE TABLE ClientServers (Id TEXT PRIMARY KEY, Name TEXT UNIQUE, Address TEXT, HasAccessToken INTEGER, StartLocally INTEGER, Position INTEGER);
+                CREATE TABLE ClientSettings (Id INTEGER PRIMARY KEY, ActiveServerId TEXT REFERENCES ClientServers(Id));
+                INSERT INTO ClientServers VALUES ($remote, 'work', 'https://work.example', 1, 0, 1);
+                INSERT INTO ClientServers VALUES ($local, 'local', 'http://localhost:5067', 1, 0, 0);
+                INSERT INTO ClientSettings VALUES (1, $remote);
+                PRAGMA user_version = 2;
+                """;
+            schema.Parameters.AddWithValue("$local", localId.ToString("D"));
+            schema.Parameters.AddWithValue("$remote", remoteId.ToString("D"));
+            await schema.ExecuteNonQueryAsync();
+        }
+        var database = new ClientConnectionDatabase(ConfigPath);
+        var config = await database.LoadAsync();
+        Assert.True(config.ServerRequired);
+        Assert.Equal("work", config.ActiveServer);
+        Assert.Equal(new[]
+        {
+            new ServerConnection(localId, "local", "http://localhost:5067", HasAccessToken: true, StartLocally: false),
+            new ServerConnection(remoteId, "work", "https://work.example", HasAccessToken: true, StartLocally: false)
+        }, config.Servers);
+        var reopened = await database.LoadAsync();
+        Assert.True(reopened.ServerRequired);
+        Assert.Equal(config.Servers, reopened.Servers);
+        using var migrated = new SqliteConnection($"Data Source={ConfigPath};Pooling=False");
+        await migrated.OpenAsync();
+        using var version = migrated.CreateCommand();
+        version.CommandText = "PRAGMA user_version;";
+        Assert.Equal(3L, await version.ExecuteScalarAsync());
+    }
+
+    [Fact]
+    public async Task ServerRequirementIsGlobalPersistentAndIndependentOfProfilesAndTokens()
+    {
+        Assert.True(new ClientConfiguration(null, []).ServerRequired);
+        var tokens = new Tokens();
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        var initial = await manager.SetTokenAsync((await manager.LoadAsync()).Find("local"), "saved-token");
+        var optional = await manager.SetServerRequiredAsync(false);
+        Assert.False(optional.ServerRequired);
+        Assert.Equal(initial.ActiveServer, optional.ActiveServer);
+        Assert.Equal(initial.Servers, optional.Servers);
+        Assert.Equal("saved-token", tokens.Values[initial.Find().Id]);
+
+        var reopened = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        Assert.False((await reopened.LoadAsync()).ServerRequired);
+        Assert.False((await reopened.AddAsync("remote", "https://remote.example")).ServerRequired);
+        Assert.False((await reopened.SelectAsync("remote")).ServerRequired);
+        Assert.False((await reopened.SetLocalStartupAsync("local", false)).ServerRequired);
+        Assert.False((await reopened.UpdateAddressAsync("remote", "https://another.example")).ServerRequired);
+        await reopened.RemoveAsync("remote");
+        var noProfiles = await reopened.RemoveAsync("local");
+        Assert.False(noProfiles.ServerRequired);
+        Assert.Null(noProfiles.ActiveServer);
+        Assert.Empty(noProfiles.Servers);
+        Assert.False((await manager.LoadAsync()).ServerRequired);
+        await reopened.SetServerRequiredAsync(true);
+        Assert.True((await manager.LoadAsync()).ServerRequired);
+    }
+
+    [Fact]
+    public async Task ClientDatabaseStartsWithLocalServerAndWorksWithoutRunningServer()
+    {
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens());
+        var initial = await manager.LoadAsync();
+        Assert.True(initial.ServerRequired);
+        Assert.Equal("local", initial.ActiveServer);
+        Assert.Equal("http://localhost:5067", initial.Find().Address);
+        Assert.True(initial.Find().StartLocally);
+        await manager.AddAsync("remote", "https://offline.example");
+        await manager.SelectAsync("remote");
+        var reopened = await new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens()).LoadAsync();
+        Assert.Equal("remote", reopened.ActiveServer);
+        using var db = new SqliteConnection($"Data Source={ConfigPath};Pooling=False");
+        await db.OpenAsync();
+        using var query = db.CreateCommand();
+        query.CommandText = "SELECT COUNT(*) FROM ClientServers;";
+        Assert.Equal(2L, await query.ExecuteScalarAsync());
+        await manager.RemoveAsync("remote");
+        await manager.RemoveAsync("local");
+        Assert.Empty((await manager.LoadAsync()).Servers);
+    }
+
+    [Fact]
+    public async Task FailedDatabaseMutationRollsBackAndFutureSchemaIsPreserved()
+    {
+        var database = new ClientConnectionDatabase(ConfigPath);
+        await database.LoadAsync();
+        await Assert.ThrowsAsync<IOException>(() => database.UpdateAsync(_ => throw new IOException("simulated")));
+        Assert.Equal("local", (await database.LoadAsync()).ActiveServer);
+        using (var db = new SqliteConnection($"Data Source={ConfigPath};Pooling=False"))
+        {
+            await db.OpenAsync();
+            using var query = db.CreateCommand();
+            query.CommandText = "PRAGMA user_version = 4;";
+            await query.ExecuteNonQueryAsync();
+        }
+        await Assert.ThrowsAsync<InvalidDataException>(() => database.LoadAsync());
+    }
+
+    [Fact]
+    public async Task LocalStartupPreferenceIsSavedAndClearedWhenConnectionBecomesRemote()
+    {
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens());
+        await manager.SetLocalStartupAsync("local", false);
+        Assert.False((await manager.LoadAsync()).Find().StartLocally);
+        await manager.SetLocalStartupAsync("local", true);
+        var config = await manager.UpdateAddressAsync("local", "https://remote.example");
+        Assert.False(config.Find().StartLocally);
+        await Assert.ThrowsAsync<ArgumentException>(() => manager.SetLocalStartupAsync("local", true));
+    }
+
+    [Fact]
+    public async Task MultipleClientsShareProfilesAndExplicitServerDoesNotChangeDefault()
+    {
+        var tokens = new Tokens();
+        var first = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        var second = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        await first.LoadAsync();
+        await Task.WhenAll(first.AddAsync("work", "https://work.example"), second.AddAsync("home", "https://home.example"));
+        await first.SelectAsync("work");
+        var loaded = await second.LoadAsync();
+        Assert.Equal(3, loaded.Servers.Count);
+        Assert.Equal("work", loaded.ActiveServer);
+        var connection = await new ServerConnector(new ClientConnectionDatabase(ConfigPath), tokens,
+            new LocalServerLauncher(new ServerReadinessProbe(), new LocalServerProcess())).ConnectAsync("home");
+        await using var client = connection.Client;
+        Assert.Equal("home", connection.Server.Name);
+        Assert.Equal("work", (await first.LoadAsync()).ActiveServer);
+        await second.RemoveAsync("work");
+        Assert.Equal("local", (await first.LoadAsync()).ActiveServer);
+    }
+
+    [Fact]
+    public async Task SecretsAreStoredSeparatelyAndNeverFollowAddressChanges()
+    {
+        var tokens = new Tokens();
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        await manager.AddAsync("remote", "https://one.example");
+        var config = await manager.SetTokenAsync((await manager.LoadAsync()).Find("remote"), "private-token");
+        Assert.DoesNotContain("private-token", System.Text.Encoding.UTF8.GetString(await File.ReadAllBytesAsync(ConfigPath)));
+        Assert.Equal("private-token", tokens.Values[config.Find("remote").Id]);
+        config = await manager.UpdateAddressAsync("remote", "https://two.example");
+        Assert.False(config.Find("remote").HasAccessToken);
+        Assert.Empty(tokens.Values);
+        await manager.SetTokenAsync(config.Find("remote"), "replacement");
+        await manager.RemoveAsync("remote");
+        Assert.Empty(tokens.Values);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LatePairingCannotSaveTokenAfterAddressChangeOrProfileReplacement(bool replace)
+    {
+        var tokens = new Tokens();
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        var original = (await manager.AddAsync("remote", "https://one.example")).Find("remote");
+        var second = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        if (replace)
+        {
+            await second.RemoveAsync("remote");
+            await second.AddAsync("remote", original.Address);
+        }
+        else await second.UpdateAddressAsync("remote", "https://two.example");
+
+        await Assert.ThrowsAsync<ServerConnectionException>(() => manager.SetTokenAsync(original, "late-pairing-token"));
+
+        Assert.Empty(tokens.Values);
+        Assert.False((await manager.LoadAsync()).Find("remote").HasAccessToken);
+    }
+
+    [Fact]
+    public async Task PairingTokenCanBeSavedOnlyForItsExpectedProfileAndRemainsOutsideTheDatabase()
+    {
+        var tokens = new Tokens();
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), tokens);
+        var server = (await manager.LoadAsync()).Find();
+        var saved = await manager.SetTokenAsync(server, "issued-device-token");
+        Assert.True(saved.Find().HasAccessToken);
+        Assert.NotEqual(server.Id, saved.Find().Id);
+        Assert.Equal("issued-device-token", tokens.Values[saved.Find().Id]);
+        Assert.DoesNotContain("issued-device-token", System.Text.Encoding.UTF8.GetString(await File.ReadAllBytesAsync(ConfigPath)));
+    }
+
+    [Theory]
+    [InlineData("http://remote.example")]
+    [InlineData("https://user:secret@remote.example")]
+    [InlineData("https://remote.example?token=secret")]
+    [InlineData("file:///tmp/server")]
+    public async Task UnsafeServerAddressesAreRejected(string address)
+    {
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens());
+        await Assert.ThrowsAsync<ArgumentException>(async () => await manager.AddAsync("remote", address));
+    }
+
+    [Fact]
+    public async Task DuplicateNamesAreRejectedAndMalformedDatabaseIsNotOverwritten()
+    {
+        var manager = new ServerConnectionManager(new ClientConnectionDatabase(ConfigPath), new Tokens());
+        await manager.LoadAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() => manager.AddAsync("LOCAL", "https://other.example"));
+        await File.WriteAllTextAsync(ConfigPath, "broken database");
+        await Assert.ThrowsAsync<SqliteException>(() => manager.LoadAsync());
+        Assert.Equal("broken database", await File.ReadAllTextAsync(ConfigPath));
+    }
+
+    [Theory]
+    [InlineData(AuthState.SignedOut, true)]
+    [InlineData(AuthState.InvalidCredential, true)]
+    [InlineData(AuthState.Authenticated, false)]
+    [InlineData(AuthState.SubscriptionRequired, false)]
+    [InlineData(AuthState.Unavailable, false)]
+    public void LoginIsProposedOnlyWhenAuthenticationIsMissing(AuthState state, bool expected) =>
+        Assert.Equal(expected, new AuthStatus { State = state }.NeedsLogin);
+
+    public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }
+
+    private sealed class Tokens : IServerTokenStore
+    {
+        public Dictionary<Guid, string> Values { get; } = [];
+        public Task<string?> GetAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(Values.GetValueOrDefault(id));
+        public Task SetAsync(Guid id, string token, CancellationToken cancellationToken = default) { Values[id] = token; return Task.CompletedTask; }
+        public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) { Values.Remove(id); return Task.CompletedTask; }
+    }
+}

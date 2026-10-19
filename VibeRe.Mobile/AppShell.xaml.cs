@@ -1,9 +1,10 @@
 ﻿namespace VibeRe.Mobile;
 
-public class AppShell : Shell
+public partial class AppShell : Shell
 {
-    public AppShell()
+    public AppShell(MainPage page)
     {
         InitializeComponent();
+        MainContent.Content = page;
     }
 }
