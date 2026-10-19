@@ -41,12 +41,16 @@ internal sealed class SignalRTestServer : IDisposable
 
     public VibeReClient CreateClient() => new("https://server.example", httpHandler: _server.CreateHandler());
 
-    public HubConnection CreateConnection() => new HubConnectionBuilder()
-        .WithUrl("https://server.example" + Protocol.ServerProtocol.AuthHubPath, options =>
+    public HubConnection CreateConnection(Func<IServiceProvider, HubConnection>? connectionFactory = null)
+    {
+        var builder = new HubConnectionBuilder().WithUrl("https://server.example" + Protocol.ServerProtocol.AuthHubPath, options =>
         {
             options.Transports = HttpTransportType.LongPolling;
             options.HttpMessageHandlerFactory = _ => _server.CreateHandler();
-        }).WithAutomaticReconnect().Build();
+        }).WithAutomaticReconnect();
+        if (connectionFactory is not null) builder.Services.AddSingleton(connectionFactory);
+        return builder.Build();
+    }
 
     public void Dispose() => _host.Dispose();
 }

@@ -103,31 +103,44 @@ public sealed class SignalRAuthClient(HubConnection connection) : IVibeReClient
 
     private async Task<BrowserLoginResult> WatchBrowserLoginAsync(string attemptId, CancellationToken cancellationToken)
     {
-        while (true)
+        CancellationTokenSource? recovery = null;
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
+            while (true)
             {
-                await foreach (var reply in _connection.StreamAsync<Contracts.BrowserLoginReply>(
-                    "WatchBrowserLogin", attemptId, cancellationToken))
+                cancellationToken.ThrowIfCancellationRequested();
+                try
                 {
-                    var result = Map(reply);
-                    if (result.State != BrowserLoginState.Waiting)
+                    await foreach (var reply in _connection.StreamAsync<Contracts.BrowserLoginReply>(
+                        "WatchBrowserLogin", attemptId, cancellationToken))
                     {
-                        return result;
+                        var result = Map(reply);
+                        recovery?.Dispose();
+                        recovery = null;
+                        if (result.State != BrowserLoginState.Waiting)
+                        {
+                            return result;
+                        }
                     }
-                }
 
-                throw new ServerConnectionException("The server ended the login stream before completion. Try again.");
-            }
-            catch (Exception error) when (IsConnectionLoss(error) && !cancellationToken.IsCancellationRequested)
-            {
-                // Only observation is replayed. The server retains the same attempt across reconnects.
-                using var recovery = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                recovery.CancelAfter(RequestTimeout);
-                await EnsureConnectedAsync(recovery.Token);
+                    throw new ServerConnectionException("The server ended the login stream before completion. Try again.");
+                }
+                catch (Exception error) when (IsConnectionLoss(error))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    // Only observation is replayed. Keep one deadline across consecutive failures,
+                    // and yield even if automatic reconnect already reports Connected.
+                    if (recovery is null)
+                    {
+                        recovery = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        recovery.CancelAfter(RequestTimeout);
+                    }
+                    await Task.Delay(ConnectionPollInterval, recovery.Token);
+                    await EnsureConnectedAsync(recovery.Token);
+                }
             }
         }
+        finally { recovery?.Dispose(); }
     }
 
     private async Task<T> InvokeAsync<T>(string method, object?[] arguments, CancellationToken cancellationToken)
@@ -179,9 +192,15 @@ public sealed class SignalRAuthClient(HubConnection connection) : IVibeReClient
         }
     }
 
-    private bool IsConnectionLoss(Exception error) =>
+    private static bool IsConnectionLoss(Exception error) =>
         error is IOException or WebSocketException or TimeoutException or OperationCanceledException ||
-        error is InvalidOperationException && _connection.State != HubConnectionState.Connected;
+        // SignalR checks its active transport under a lock, independently of public State.
+        // A reconnect may finish before this catch runs, so re-reading State loses the failure.
+        // Match only this transport error; unrelated InvalidOperation/Hub/auth errors stay terminal.
+        error is InvalidOperationException
+        {
+            Message: "The 'StreamAsChannelCoreAsync' method cannot be called if the connection is not active"
+        };
 
     private static Exception Translate(Exception error, CancellationToken cancellationToken) => error switch
     {
