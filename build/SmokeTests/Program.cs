@@ -14,6 +14,7 @@ var root = args[0] == "--installed-root" ? source : Path.Combine(temp, "installe
 var cwd = Path.Combine(temp, "unrelated working directory");
 Directory.CreateDirectory(cwd);
 var suffix = OperatingSystem.IsWindows() ? ".exe" : "";
+var smokeTimer = Stopwatch.StartNew();
 var environment = new Dictionary<string, string?>
 {
     ["VIBE_RE_CLIENT_DATABASE"] = Path.Combine(temp, "client.db"),
@@ -62,11 +63,13 @@ try
             environment["ASPNETCORE_CONTENTROOT"] = external;
         }
         var address = FreeAddress();
+        Trace($"{app}: configure isolated database {database} and endpoint {address}");
         await Run(cli, ["servers", "update", "local", address], 0, address);
         Process? foreground = null;
         Process? desktop = null;
         try
         {
+            Trace($"{app}: begin initial startup");
             if (app == "server")
             {
                 // Environment settings override the shipped JSON.
@@ -83,7 +86,8 @@ try
             else
                 await Run(cli, ["auth", "status"], 1, "Mistral: SignedOut");
 
-            await Ready(address);
+            await Ready(address, $"{app} initial startup", desktop ?? foreground);
+            Trace($"{app}: validate web assets and token access");
             await WebAssets(address, serverDir);
             Require(File.Exists(database), $"Server did not load {app}'s appsettings.json");
             // A real SignalR hub invocation succeeds using the configured client token.
@@ -102,7 +106,7 @@ try
                 try { await using var lease = await new ManagedServerShutdownGuard(serverDir).AcquireUpdateLeaseAsync(); }
                 catch (InvalidOperationException) { blocked = true; }
                 Require(blocked, "Updater must block for a manually started server rather than replace its running files");
-                await Ready(address);
+                await Ready(address, "standalone server after update refusal", foreground);
             }
             else
             {
@@ -116,7 +120,8 @@ try
                     desktop.Dispose();
                     desktop = null;
                 }
-                await Ready(address);
+                await Ready(address, $"{app} detached server before update");
+                Trace($"{app}: acquire update lease and verify launch exclusion");
                 await using (var lease = await new ManagedServerShutdownGuard(Path.Combine(root, app)).AcquireUpdateLeaseAsync())
                 {
                     using var stopped = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
@@ -141,12 +146,14 @@ try
                 // Disposing an un-applied update lease releases startup and preserves the same settings/data.
                 if (app == "desktop")
                 {
+                    Trace("desktop: restart after releasing update lease");
                     desktop = Start(Path.Combine(root, app, "VibeRe.Desktop" + suffix), []);
                     Drain(desktop);
-                    await Ready(address);
+                    await Ready(address, "desktop restart after update lease", desktop);
                 }
                 await Run(cli, ["auth", "status"], 1, "Mistral: SignedOut");
             }
+            Trace($"{app}: completed startup and lifecycle checks");
             Console.WriteLine($"PASS: {app} published startup, SignalR readiness v2, web assets, configuration and token access");
             Console.WriteLine($"PASS: {app} update ownership, graceful managed shutdown and restart safety");
         }
@@ -163,6 +170,7 @@ try
 }
 catch
 {
+    Trace("Failure diagnostics: accumulated server output follows; these lines were written earlier");
     var log = Path.Combine(temp, "server.log");
     if (File.Exists(log)) Console.Error.WriteLine(await File.ReadAllTextAsync(log));
     throw;
@@ -183,6 +191,7 @@ Process Start(string file, string[] arguments)
         if (item.Value is null) start.Environment.Remove(item.Key); else start.Environment[item.Key] = item.Value;
     ManagedServerLaunch.ClearInheritedRegistration(start);
     var process = Process.Start(start) ?? throw new Exception("Cannot launch " + file);
+    Trace($"Started {Path.GetFileName(file)} (PID {process.Id})");
     process.StandardInput.Close();
     return process;
 }
@@ -213,31 +222,78 @@ async Task Run(string file, string[] arguments, int? exitCode, string expected)
         $"{Path.GetFileName(file)} {string.Join(' ', arguments)}: exit {process.ExitCode}, expected {exitCode?.ToString() ?? "nonzero"}/{expected}: {message}");
 }
 
-async Task Ready(string address)
+async Task Ready(string address, string phase, Process? observedProcess = null)
 {
+    // Desktop initialization precedes the client's own 45-second local-server startup budget.
+    // Use a wall-clock bound rather than a retry count, which varied with connection failures.
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+    var timer = Stopwatch.StartNew();
     using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
-    for (var attempt = 0; attempt < 100; attempt++)
+    var lastProbe = "No response received";
+    var nextReport = TimeSpan.Zero;
+    Trace($"{phase}: wait up to 60 seconds for {address}; {ReadinessDiagnostics()}");
+    while (!deadline.IsCancellationRequested)
     {
+        CheckObservedProcess();
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, address + "/.well-known/vibe-re/server")
                 { Version = HttpVersion.Version11, VersionPolicy = HttpVersionPolicy.RequestVersionExact };
-            using var response = await http.SendAsync(request);
+            using var response = await http.SendAsync(request, deadline.Token);
+            lastProbe = $"HTTP {(int)response.StatusCode}";
             if (response.IsSuccessStatusCode)
             {
-                using var identity = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                using var identity = JsonDocument.Parse(await response.Content.ReadAsStringAsync(deadline.Token));
                 var value = identity.RootElement;
                 if (value.GetProperty("application").GetString() == "vibe-re" &&
                     value.GetProperty("protocolVersion").GetInt32() == 2 &&
-                    value.GetProperty("transport").GetString() == "signalr") return;
+                    value.GetProperty("transport").GetString() == "signalr")
+                {
+                    deadline.Token.ThrowIfCancellationRequested();
+                    CheckObservedProcess();
+                    Trace($"{phase}: ready after {timer.Elapsed.TotalSeconds:F1}s; {ReadinessDiagnostics()}");
+                    return;
+                }
+                lastProbe = "Readiness response had an unexpected application/protocol identity";
             }
         }
-        catch (HttpRequestException) { }
-        catch (TaskCanceledException) { }
-        await Task.Delay(100);
+        catch (HttpRequestException exception) { lastProbe = $"HTTP connection failed: {exception.HttpRequestError}"; }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested) { break; }
+        catch (TaskCanceledException) { lastProbe = "HTTP probe exceeded its 1-second timeout"; }
+        if (timer.Elapsed >= nextReport)
+        {
+            Trace($"{phase}: waiting {timer.Elapsed.TotalSeconds:F1}s; {lastProbe}; {ReadinessDiagnostics()}");
+            nextReport = timer.Elapsed + TimeSpan.FromSeconds(5);
+        }
+        try { await Task.Delay(100, deadline.Token); }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested) { break; }
     }
-    throw new Exception("Published server did not become ready: " + address);
+    CheckObservedProcess();
+    throw new Exception($"{phase}: published server did not become ready at {address} within 60 seconds " +
+        $"(elapsed {timer.Elapsed.TotalSeconds:F1}s; {lastProbe}; {ReadinessDiagnostics()}). See process output and server log below.");
+
+    void CheckObservedProcess()
+    {
+        if (observedProcess?.HasExited == true)
+            throw new Exception($"{phase}: {Path.GetFileName(observedProcess.StartInfo.FileName)} (PID {observedProcess.Id}) " +
+                $"exited with code {observedProcess.ExitCode} before readiness after {timer.Elapsed.TotalSeconds:F1}s. " +
+                $"{ReadinessDiagnostics()}. See process output and server log below.");
+    }
 }
+
+string ReadinessDiagnostics()
+{
+    var log = new FileInfo(environment["VIBE_RE_SERVER_LOG"]!);
+    try
+    {
+        return log.Exists ? $"server log: {log.Length} bytes, last write {log.LastWriteTimeUtc:O}"
+            : "server log has not been created";
+    }
+    catch (IOException) { return "server log is changing or unavailable"; }
+    catch (UnauthorizedAccessException) { return "server log cannot be read"; }
+}
+
+void Trace(string message) => Console.WriteLine($"SMOKE {DateTimeOffset.UtcNow:O} +{smokeTimer.Elapsed.TotalSeconds:F1}s {message}");
 
 async Task WebAssets(string address, string serverDir)
 {
