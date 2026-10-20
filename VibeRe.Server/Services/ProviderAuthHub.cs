@@ -6,8 +6,9 @@ using VibeRe.Server.Application.Providers.Auth;
 namespace VibeRe.Server.Services;
 
 // The hub is only a transport adapter. Credentials and browser attempts belong to application services.
-public sealed class ProviderAuthHub(
+public sealed partial class ProviderAuthHub(
     IAuthService auth,
+    VibeRe.Server.Application.Workspace.WorkspaceService workspace,
     IBrowserAuthService browser,
     IHostApplicationLifetime lifetime,
     DeviceAccessHubFilter access,

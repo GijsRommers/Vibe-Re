@@ -18,7 +18,7 @@ public sealed class TestApplication : Application
 {
     public override void Initialize() => Styles.Add(new FluentTheme());
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<TestApplication>()
-        .UseHeadless(new AvaloniaHeadlessPlatformOptions());
+        .UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 }
 
 public sealed class UpdatesWindowTests

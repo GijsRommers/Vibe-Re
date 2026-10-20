@@ -7,7 +7,7 @@ using Contracts = VibeRe.Contracts;
 
 namespace VibeRe.Client.Infrastructure;
 
-public sealed class VibeReClient : IVibeReClient, IDisposable
+public sealed class VibeReClient : IVibeReClient, VibeRe.Client.Application.Workspace.IWorkspaceClient, IDisposable
 {
     private readonly SignalRAuthClient _client;
     private readonly HttpMessageInvoker _http;
@@ -58,6 +58,12 @@ public sealed class VibeReClient : IVibeReClient, IDisposable
 
     public Task<BrowserLoginResult> LoginWithBrowserAsync(Func<BrowserLoginResult, Task> showBrowser,
         CancellationToken cancellationToken = default) => _client.LoginWithBrowserAsync(showBrowser, cancellationToken);
+
+    public Task<VibeRe.Client.Application.Workspace.WorkspaceSnapshot> GetWorkspaceAsync(CancellationToken ct = default) => _client.GetWorkspaceAsync(ct);
+    public Task<VibeRe.Client.Application.Workspace.ThreadState> ReadThreadAsync(Guid id, CancellationToken ct = default) => _client.ReadThreadAsync(id, ct);
+    public Task<VibeRe.Client.Application.Workspace.ThreadState> CreateThreadAsync(Guid id, string title, string? prompt, CancellationToken ct = default) => _client.CreateThreadAsync(id, title, prompt, ct);
+    public Task<VibeRe.Client.Application.Workspace.ThreadState> SendThreadAsync(Guid id, Guid commandId, string text, CancellationToken ct = default) => _client.SendThreadAsync(id, commandId, text, ct);
+    public Task StopThreadAsync(Guid id, CancellationToken ct = default) => _client.StopThreadAsync(id, ct);
 
     public async ValueTask DisposeAsync()
     {

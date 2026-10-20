@@ -115,7 +115,7 @@ public sealed class DeviceSessionStoreTests
         }
         await fixture.MigrateAsync();
         await using var upgraded = fixture.Factory.CreateDbContext();
-        Assert.Equal(2, (await upgraded.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(upgraded.Database.GetMigrations(), await upgraded.Database.GetAppliedMigrationsAsync());
         Assert.Empty(await upgraded.Database.GetPendingMigrationsAsync());
         Assert.False(upgraded.Database.HasPendingModelChanges());
         var profile = Assert.Single(await upgraded.ProviderProfiles.Include(x => x.Credential).ToArrayAsync());

@@ -53,6 +53,79 @@ namespace VibeRe.Server.Infrastructure.Persistence.Migrations
                     b.ToTable("DeviceSessions");
                 });
 
+            modelBuilder.Entity("VibeRe.Domain.Chat.WorkspaceMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Handled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("SourceThreadId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ThreadId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ThreadId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("WorkspaceMessages");
+                });
+
+            modelBuilder.Entity("VibeRe.Domain.Chat.WorkspaceThread", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ActiveRunId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AutoWake")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("ParentThreadId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepositoryPath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorktreePath")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("WorkspaceThreads");
+                });
+
             modelBuilder.Entity("VibeRe.Domain.Credentials.Credential", b =>
                 {
                     b.Property<Guid>("Id")
@@ -132,6 +205,15 @@ namespace VibeRe.Server.Infrastructure.Persistence.Migrations
                     b.ToTable("ProviderProfiles");
                 });
 
+            modelBuilder.Entity("VibeRe.Domain.Chat.WorkspaceMessage", b =>
+                {
+                    b.HasOne("VibeRe.Domain.Chat.WorkspaceThread", null)
+                        .WithMany("Messages")
+                        .HasForeignKey("ThreadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("VibeRe.Domain.Mcp.McpConnection", b =>
                 {
                     b.HasOne("VibeRe.Domain.Credentials.Credential", "Credential")
@@ -148,6 +230,11 @@ namespace VibeRe.Server.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CredentialId");
 
                     b.Navigation("Credential");
+                });
+
+            modelBuilder.Entity("VibeRe.Domain.Chat.WorkspaceThread", b =>
+                {
+                    b.Navigation("Messages");
                 });
 #pragma warning restore 612, 618
         }

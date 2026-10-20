@@ -8,7 +8,7 @@ using Contracts = VibeRe.Contracts;
 namespace VibeRe.Client.SignalR;
 
 // Owns the supplied connection; the platform chooses its transport and authentication.
-public sealed class SignalRAuthClient(HubConnection connection) : IVibeReClient
+public sealed partial class SignalRAuthClient(HubConnection connection) : IVibeReClient, VibeRe.Client.Application.Workspace.IWorkspaceClient
 {
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan MaximumBrowserLoginLifetime = TimeSpan.FromMinutes(10);

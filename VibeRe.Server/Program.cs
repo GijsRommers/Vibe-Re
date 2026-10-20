@@ -31,6 +31,7 @@ if (string.IsNullOrEmpty(builder.Configuration["urls"]))
     builder.WebHost.UseUrls("http://localhost:5067");
 // Keep credentials and ephemeral transport identifiers out of request logs.
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 builder.Logging.AddFilter("Microsoft.AspNetCore.Http.Connections", LogLevel.Warning);
 // Hub invocation arguments include API keys; verbose protocol/frame logging is not safe here either.
 builder.Logging.AddFilter("Microsoft.AspNetCore.SignalR", LogLevel.Warning);

@@ -1,82 +1,224 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:client="using:VibeRe.Client.Application"
-        x:Class="VibeRe.Desktop.Views.MainWindow" x:DataType="client:ConnectionSettingsViewModel"
-        Title="VibeRe" Width="720" Height="680" MinWidth="520" MinHeight="480"
-        Background="#101010" Foreground="#F5F5F5" RequestedThemeVariant="Dark">
-    <Grid RowDefinitions="Auto,*" Margin="24" RowSpacing="24">
-        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" MaxWidth="600" HorizontalAlignment="Stretch">
-            <ComboBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
-                      IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch"
-                      PlaceholderText="Choose a server" AutomationProperties.Name="Server" />
-            <Button Grid.Column="1" Content="Manage servers" Command="{Binding ToggleServerSettingsCommand}"
-                    Background="Transparent" BorderThickness="0" Foreground="#AAAAAA" />
-            <Button Grid.Column="2" Content="Updates" Click="OpenUpdates" AutomationProperties.Name="Check for VibeRe updates"
-                    Background="Transparent" BorderThickness="0" Foreground="#AAAAAA" />
-        </Grid>
-        <ScrollViewer Grid.Row="1" VerticalAlignment="Center">
-            <StackPanel Spacing="16" MaxWidth="480" HorizontalAlignment="Stretch">
-                <Button Command="{Binding LoginBrowserCommand}" IsVisible="{Binding NeedsLogin}"
-                        Width="144" Height="144" HorizontalAlignment="Center"
-                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                        Background="#1C1C1C" BorderBrush="#383838" BorderThickness="1" CornerRadius="0"
-                        AutomationProperties.Name="Login to Mistral">
-                    <StackPanel Spacing="16">
-                        <Canvas Width="70" Height="50" HorizontalAlignment="Center" IsHitTestVisible="False">
-                            <Path Fill="#FFD700" Data="M10,0 H20 V10 H10 Z M50,0 H60 V10 H50 Z" />
-                            <Path Fill="#FFAF00" Data="M10,10 H30 V20 H10 Z M40,10 H60 V20 H40 Z" />
-                            <Path Fill="#FF8205" Data="M10,20 H60 V30 H10 Z" />
-                            <Path Fill="#FA500F" Data="M10,30 H20 V40 H10 Z M30,30 H40 V40 H30 Z M50,30 H60 V40 H50 Z" />
-                            <Path Fill="#E10500" Data="M0,40 H30 V50 H0 Z M40,40 H70 V50 H40 Z" />
-                        </Canvas>
-                        <TextBlock Text="Login" FontSize="16" HorizontalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <TextBlock Text="{Binding Status}" Foreground="#AAAAAA" TextWrapping="Wrap" TextAlignment="Center" />
-                <Button Content="Log out" Command="{Binding LogoutCommand}" IsVisible="{Binding IsSignedIn}" HorizontalAlignment="Center" />
-                <TextBox Text="{Binding BrowserUrl}" IsReadOnly="True" TextWrapping="Wrap" IsVisible="{Binding HasBrowserUrl}" />
-                <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3" />
-                <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" HorizontalAlignment="Center" />
-                <StackPanel IsVisible="{Binding ShowServerSettings}" Spacing="12" Margin="0,16,0,0">
-                    <TextBlock Text="Server settings" FontWeight="SemiBold" />
-                    <CheckBox Content="Require a server at startup" IsChecked="{Binding ServerRequired}" IsEnabled="{Binding CanEdit}" />
-                    <Button Content="Refresh connection" Command="{Binding RefreshCommand}" />
-                    <Button Content="Remove Mistral login" Command="{Binding LogoutCommand}" />
-                    <CheckBox Content="Start this server locally when needed" IsChecked="{Binding StartLocalServer}"
-                              IsVisible="{Binding CanStartLocally}" IsEnabled="{Binding CanEdit}" />
-                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
-                        <TextBox Text="{Binding ServerAddress}" PlaceholderText="Server URL" IsEnabled="{Binding CanEdit}" />
-                        <Button Grid.Column="1" Content="Save address" Command="{Binding SaveAddressCommand}" />
-                        <Button Grid.Column="2" Content="Remove" Command="{Binding RemoveServerCommand}" />
-                    </Grid>
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                        <TextBox Text="{Binding PairingDeviceName}" PlaceholderText="Device name" IsEnabled="{Binding CanEdit}" />
-                        <Button Grid.Column="1" Content="Pair this device" Command="{Binding PairDeviceCommand}" />
-                    </Grid>
-                    <StackPanel IsVisible="{Binding HasPairingChallenge}" Spacing="8">
-                        <TextBox Text="{Binding PairingApprovalCode}" IsReadOnly="True" FontSize="24"
-                                 HorizontalContentAlignment="Center" AutomationProperties.Name="Device approval code" />
-                        <TextBlock Text="{Binding PairingInstructions}" TextWrapping="Wrap" FontSize="12" />
-                    </StackPanel>
-                    <TextBlock Text="Pairing grants access to this server. Mistral login is separate." TextWrapping="Wrap" FontSize="12" />
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                        <TextBox Text="{Binding ServerToken}" PasswordChar="●" PlaceholderText="Server access token" IsEnabled="{Binding CanEdit}" />
-                        <Button Grid.Column="1" Content="Save token" Command="{Binding SaveTokenCommand}" />
-                    </Grid>
-                    <TextBlock Text="Saving an empty token clears it. Changing the address clears its saved token." TextWrapping="Wrap" FontSize="12" />
-                    <TextBlock Text="Add a server" FontWeight="SemiBold" />
-                    <Grid ColumnDefinitions="140,*,Auto" ColumnSpacing="10">
-                        <TextBox Text="{Binding NewServerName}" PlaceholderText="Name" IsEnabled="{Binding CanEdit}" />
-                        <TextBox Grid.Column="1" Text="{Binding NewServerAddress}" PlaceholderText="https://vibe.example.com" IsEnabled="{Binding CanEdit}" />
-                        <Button Grid.Column="2" Content="Add" Command="{Binding AddServerCommand}" />
-                    </Grid>
-                    <Button Content="Use an API key instead" Command="{Binding ToggleApiKeyCommand}" IsVisible="{Binding NeedsLogin}" />
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" IsVisible="{Binding ShowApiKey}">
-                        <TextBox Text="{Binding ApiKey}" PasswordChar="●" PlaceholderText="Mistral API key" IsEnabled="{Binding CanEdit}" />
-                        <Button Grid.Column="1" Content="Log in with key" Command="{Binding LoginApiKeyCommand}" />
+        xmlns:vm="using:VibeRe.Desktop.ViewModels"
+        xmlns:chat="using:VibeRe.Client.Application.Workspace"
+        xmlns:views="using:VibeRe.Desktop.Views"
+        x:Class="VibeRe.Desktop.Views.MainWindow" x:DataType="vm:WorkspaceViewModel"
+        Title="VibeRe" Width="1440" Height="900" MinWidth="1060" MinHeight="640"
+        Background="#0C0D10" Foreground="#E9E9EF" RequestedThemeVariant="Dark"
+        FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter" FontSize="13">
+    <Window.Styles>
+        <Style Selector="Button">
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="12,9" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.ghost">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="#9799A6" />
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#8C7AE6" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="#808390" /></Style>
+        <Style Selector="TextBlock.eyebrow">
+            <Setter Property="Foreground" Value="#707380" />
+            <Setter Property="FontSize" Value="10" /><Setter Property="LetterSpacing" Value="1.3" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#15161C" /><Setter Property="BorderBrush" Value="#2A2C36" />
+            <Setter Property="CornerRadius" Value="8" /><Setter Property="SelectionBrush" Value="#60548D" />
+        </Style>
+        <Style Selector="ListBoxItem"><Setter Property="CornerRadius" Value="8" /><Setter Property="Padding" Value="12,10" /></Style>
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter"><Setter Property="Background" Value="#23212F" /></Style>
+    </Window.Styles>
+    <Window.DataTemplates>
+        <DataTemplate DataType="chat:ThreadMessage">
+            <StackPanel Spacing="8" Margin="0,0,0,24">
+                <TextBlock Text="{Binding Author}" Foreground="#8E91A1" FontSize="11" FontWeight="SemiBold" />
+                <Border Background="#16171E" CornerRadius="10" Padding="14,12" IsVisible="{Binding IsUser}">
+                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="13" LineHeight="22" />
+                </Border>
+                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="13" LineHeight="22"
+                                     IsVisible="{Binding IsReply}" Foreground="#CECFD9" />
+                <Expander Header="Tool activity" IsVisible="{Binding IsActivity}" HorizontalAlignment="Stretch">
+                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" FontFamily="monospace" FontSize="11" Foreground="#888B99" MaxHeight="240" />
+                </Expander>
+                <Button Content="Open thread ↗" IsVisible="{Binding IsReport}" Classes="ghost" HorizontalAlignment="Left"
+                        Command="{ReflectionBinding DataContext.OpenReportCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="{Binding SourceThreadId}" Padding="0,4" FontSize="11" />
+            </StackPanel>
+        </DataTemplate>
+    </Window.DataTemplates>
+    <Grid ColumnDefinitions="230,*,350">
+        <!-- Navigation: thread-first; connection details live behind Settings. -->
+        <Border Background="#111217" BorderBrush="#23242C" BorderThickness="0,0,1,0">
+            <Grid RowDefinitions="64,Auto,Auto,*,Auto" Margin="14,0">
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="8,0">
+                    <Border Width="28" Height="28" CornerRadius="8">
+                        <Border.Background><LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%"><GradientStop Color="#B5A1F2" Offset="0" /><GradientStop Color="#6C5ACB" Offset="1" /></LinearGradientBrush></Border.Background>
+                        <TextBlock Text="v" FontSize="21" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#181322" />
+                    </Border>
+                    <TextBlock Text="VibeRe" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+                <Button Grid.Row="1" Classes="ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Content="＋   New thread" Command="{Binding NewThreadCommand}" IsEnabled="{Binding CanWork}" Margin="0,8,0,14" />
+                <StackPanel Grid.Row="2" Spacing="18" Margin="8,0,8,12">
+                    <TextBox Text="{Binding Search}" PlaceholderText="Search threads…" FontSize="12" Background="Transparent" BorderThickness="0" Padding="0,6" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="THREADS" Classes="eyebrow" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding ThreadCount}" FontSize="10" Classes="muted" VerticalAlignment="Center" />
                     </Grid>
                 </StackPanel>
+                <ListBox Grid.Row="3" ItemsSource="{Binding FilteredThreads}" SelectedItem="{Binding SelectedThread}"
+                         Background="Transparent" BorderThickness="0" SelectionMode="Single" AutomationProperties.Name="Threads">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="chat:ThreadState">
+                            <StackPanel Spacing="7">
+                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="◦" Foreground="#9C8AE4" />
+                                    <TextBlock Text="{Binding StatusLabel}" Foreground="#888B99" FontSize="10" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <Border Grid.Row="4" BorderBrush="#23242C" BorderThickness="0,1,0,0" Padding="0,12,0,16">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="5" Margin="8,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding RepositoryName}" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="145" />
+                            <TextBlock Text="{Binding ConnectionSummary}" Classes="muted" FontSize="10" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="⚙" Classes="ghost" Command="{Binding ToggleSettingsCommand}"
+                                ToolTip.Tip="Settings" AutomationProperties.Name="Settings" FontSize="18" Padding="9" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+        <!-- Main coding thread. -->
+        <Grid Grid.Column="1" RowDefinitions="58,Auto,*,Auto">
+            <Border BorderBrush="#23242C" BorderThickness="0,0,0,1" Padding="24,0">
+                <Grid ColumnDefinitions="Auto,Auto,*" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding RepositoryName}" Classes="muted" FontSize="12" />
+                    <TextBlock Grid.Column="1" Text="/" Classes="muted" Margin="12,0" />
+                    <TextBlock Grid.Column="2" Text="{Binding ThreadTitle}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                </Grid>
+            </Border>
+            <Border Grid.Row="1" IsVisible="{Binding HasError}" Background="#251E26" BorderBrush="#51404A" BorderThickness="1"
+                    CornerRadius="8" Margin="24,16,24,0" Padding="14,10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Foreground="#D6B9C7" FontSize="12" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="Retry" Command="{Binding RetryCommand}" Classes="ghost" Margin="12,0,0,0" />
+                </Grid>
+            </Border>
+            <Grid Grid.Row="2">
+                <ScrollViewer x:Name="ThreadScroll" Margin="32,24" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Messages}" MaxWidth="760" />
+                </ScrollViewer>
+                <StackPanel IsVisible="{Binding IsEmpty}" MaxWidth="440" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18" Margin="32">
+                    <Border Width="48" Height="48" CornerRadius="14" Background="#201B30" HorizontalAlignment="Center">
+                        <TextBlock Text="✦" FontSize="28" Foreground="#B7A5F0" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="What are we building?" FontSize="26" FontWeight="SemiBold" TextAlignment="Center" />
+                    <TextBlock Text="Start a focused coding thread, or let The Cockpit coordinate the bigger picture."
+                               Classes="muted" TextWrapping="Wrap" TextAlignment="Center" FontSize="13" LineHeight="22" />
+                    <Button Content="Sign in to Mistral" Classes="primary" Command="{Binding Connection.LoginBrowserCommand}"
+                            IsVisible="{Binding Connection.NeedsLogin}" HorizontalAlignment="Center" Margin="0,8" />
+                    <TextBlock Text="Each thread has its own worktree. Results return to The Cockpit." Classes="muted"
+                               FontSize="11" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0" />
+                </StackPanel>
+            </Grid>
+            <StackPanel Grid.Row="3" Margin="28,0,28,20" MaxWidth="800" Spacing="10">
+                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ThreadRunning}" Margin="8,0">
+                    <ProgressBar IsIndeterminate="True" Width="24" Height="3" VerticalAlignment="Center" />
+                    <TextBlock Text="Working in this thread…" Classes="muted" FontSize="11" />
+                </StackPanel>
+                <Border Background="#15161C" BorderBrush="#30313D" BorderThickness="1" CornerRadius="14" Padding="8">
+                    <StackPanel Spacing="8">
+                        <TextBox x:Name="ThreadInput" Text="{Binding Draft}" PlaceholderText="Describe a task…" AcceptsReturn="True"
+                                 TextWrapping="Wrap" MinHeight="64" MaxHeight="180" Background="Transparent" BorderThickness="0"
+                                 IsEnabled="{Binding CanSendThread}" KeyDown="ComposerKeyDown" AutomationProperties.Name="Thread message" />
+                        <Grid ColumnDefinitions="*,Auto" Margin="8,0,2,2">
+                            <TextBlock Text="VibeRe  ·  Mistral" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Content="↑" Classes="primary" Command="{Binding SendCommand}" IsVisible="{Binding !ThreadRunning}"
+                                    IsEnabled="{Binding CanSendThread}" Width="32" Height="32" Padding="0" FontSize="20" AutomationProperties.Name="Send thread message" />
+                            <Button Grid.Column="1" Content="■" Classes="ghost" Command="{Binding StopCommand}" IsVisible="{Binding ThreadRunning}" AutomationProperties.Name="Stop thread" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+                <TextBlock Text="Enter to send · Shift+Enter for a new line" FontSize="10" Foreground="#575A68" HorizontalAlignment="Center" />
             </StackPanel>
-        </ScrollViewer>
+        </Grid>
+        <!-- Permanent parent chat: intentionally no close or unpin action. -->
+        <Border Grid.Column="2" Background="#111217" BorderBrush="#23242C" BorderThickness="1,0,0,0">
+            <Grid RowDefinitions="58,Auto,*,Auto">
+                <Border BorderBrush="#23242C" BorderThickness="0,0,0,1" Padding="20,0">
+                    <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                        <TextBlock Text="◎" Foreground="#AE9AEF" FontSize="19" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="The Cockpit" FontWeight="SemiBold" Margin="10,0" VerticalAlignment="Center" />
+                        <Border Grid.Column="2" CornerRadius="4" Background="#242030" Padding="6,3">
+                            <TextBlock Text="PINNED" FontSize="8" Foreground="#AB9BCB" LetterSpacing="1" />
+                        </Border>
+                    </Grid>
+                </Border>
+                <TextBlock Grid.Row="1" Text="Your threads report back here." Classes="muted" FontSize="11" Margin="20,16,20,8" />
+                <Grid Grid.Row="2">
+                    <ScrollViewer x:Name="CockpitScroll" Margin="20,16" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding CockpitMessages}" />
+                    </ScrollViewer>
+                    <StackPanel IsVisible="{Binding CockpitEmpty}" Spacing="12" Margin="24" VerticalAlignment="Center">
+                        <TextBlock Text="One place to steer it all." FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Describe what you want to achieve. I’ll spin up coding threads and collect their results here."
+                                   Classes="muted" TextWrapping="Wrap" FontSize="12" LineHeight="21" />
+                        <Border Background="#191720" CornerRadius="8" Padding="14" Margin="0,8,0,0">
+                            <TextBlock Text="Try: “Create a thread to review this repository and suggest the next three improvements.”"
+                                       Foreground="#A99CBE" FontSize="11" TextWrapping="Wrap" LineHeight="19" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+                <StackPanel Grid.Row="3" Margin="16,0,16,20" Spacing="10">
+                    <TextBlock Text="Coordinating…" IsVisible="{Binding CockpitRunning}" Classes="muted" FontSize="11" Margin="4,0" />
+                    <Border Background="#191A22" BorderBrush="#37313F" BorderThickness="1" CornerRadius="12" Padding="8">
+                        <StackPanel Spacing="8">
+                            <TextBox x:Name="CockpitInput" Text="{Binding CockpitDraft}" PlaceholderText="Give The Cockpit a mission…" AcceptsReturn="True"
+                                     TextWrapping="Wrap" MinHeight="68" MaxHeight="180" Background="Transparent" BorderThickness="0"
+                                     IsEnabled="{Binding CanSendCockpit}" KeyDown="ComposerKeyDown" AutomationProperties.Name="Cockpit message" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="6,0,2,2">
+                                <TextBlock Text="Orchestrator" Classes="muted" FontSize="10" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="↑" Classes="primary" Command="{Binding SendCockpitCommand}" IsVisible="{Binding !CockpitRunning}"
+                                        IsEnabled="{Binding CanSendCockpit}" Width="30" Height="30" Padding="0" FontSize="18" AutomationProperties.Name="Send to Cockpit" />
+                                <Button Grid.Column="1" Content="■" Classes="ghost" Command="{Binding StopCockpitCommand}" IsVisible="{Binding CockpitRunning}" AutomationProperties.Name="Stop Cockpit" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <!-- Settings is a separate surface, not the primary workflow. -->
+        <Border Grid.ColumnSpan="3" Background="#B0000000" IsVisible="{Binding SettingsOpen}" PointerPressed="DismissSettings">
+            <Border Width="620" MaxHeight="760" Margin="32" Background="#17181F" BorderBrush="#32343E" BorderThickness="1"
+                    CornerRadius="16" HorizontalAlignment="Center" VerticalAlignment="Center" PointerPressed="KeepSettingsOpen">
+                <Grid RowDefinitions="Auto,*">
+                    <Grid ColumnDefinitions="*,Auto" Margin="24,18">
+                        <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="✕" Classes="ghost" Command="{Binding ToggleSettingsCommand}" AutomationProperties.Name="Close settings" />
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" Margin="24,0,24,24">
+                        <StackPanel Spacing="18">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="WORKSPACE" Classes="eyebrow" />
+                                <SelectableTextBlock Text="{Binding RepositoryPath}" Foreground="#A9ACBA" TextWrapping="Wrap" FontSize="12" />
+                            </StackPanel>
+                            <views:ConnectionSettingsView DataContext="{Binding Connection}" />
+                            <Button Content="Check for updates" Click="OpenUpdates" Classes="ghost" HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Border>
     </Grid>
 </Window>

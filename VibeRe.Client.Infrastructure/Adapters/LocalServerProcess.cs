@@ -26,11 +26,6 @@ public sealed class LocalServerProcess : ILocalServerProcess
         if (File.Exists(sibling)) return (sibling, [], true);
         var bundled = Path.Combine(AppContext.BaseDirectory, "server", name);
         if (File.Exists(bundled)) return (bundled, [], true);
-        foreach (var path in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
-        {
-            var candidate = Path.Combine(path, name);
-            if (File.Exists(candidate)) return (Path.GetFullPath(candidate), [], false);
-        }
         // Source checkouts can start the server directly, without a separate build/setup command.
         foreach (var startingDirectory in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
         {
@@ -39,6 +34,11 @@ public sealed class LocalServerProcess : ILocalServerProcess
                 var project = Path.Combine(directory.FullName, "VibeRe.Server", "VibeRe.Server.csproj");
                 if (File.Exists(project)) return ("dotnet", ["run", "--no-launch-profile", "--project", project, "--"], false);
             }
+        }
+        foreach (var path in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+        {
+            var candidate = Path.Combine(path, name);
+            if (File.Exists(candidate)) return (Path.GetFullPath(candidate), [], false);
         }
         throw new LocalServerStartupException("Local server executable was not found. Install vibe-re-server beside the client or set VIBE_RE_SERVER_EXECUTABLE.");
     }

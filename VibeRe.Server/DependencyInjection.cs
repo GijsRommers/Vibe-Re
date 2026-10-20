@@ -1,4 +1,6 @@
 using Latchkey.Extensions.DependencyInjection;
+using VibeRe.Server.Application.Workspace;
+using VibeRe.Server.Infrastructure.Workspace;
 using VibeRe.Server.Application.Access;
 using VibeRe.Server.Services;
 using Microsoft.Data.Sqlite;
@@ -49,7 +51,29 @@ internal static class DependencyInjection
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<IBrowserAuthService, BrowserAuthService>();
 
+        services.AddSingleton(new WorkspaceOptions(
+            WorkspaceRoot(configuration["Workspace:Root"])));
+        services.AddSingleton<IWorkspaceStore, WorkspaceStore>();
+        services.AddHttpClient("cockpit", client => client.Timeout = TimeSpan.FromSeconds(90))
+            .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddSingleton<IAgentModel>(sp =>
+            new MistralAgentModel(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient("cockpit"), sp.GetRequiredService<ICredentialResolver>(),
+                configuration["Workspace:Model"] ?? "devstral-latest"));
+        services.AddSingleton<IWorkspaceTools, WorkspaceTools>();
+        services.AddSingleton<ICodingAgent, CodingHarness>();
+        services.AddSingleton<WorkspaceService>();
+
         return services;
+    }
+
+    private static string WorkspaceRoot(string? configured)
+    {
+        if (!string.IsNullOrWhiteSpace(configured)) return Path.GetFullPath(configured);
+        for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory()); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, ".git")) || Directory.Exists(Path.Combine(directory.FullName, ".git")))
+                return directory.FullName;
+        return Directory.GetCurrentDirectory();
     }
 
     // The database always lives in ~/.vibe-re; SQLite won't create the folder itself.

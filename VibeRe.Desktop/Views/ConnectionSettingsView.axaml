@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:client="using:VibeRe.Client.Application"
+             x:Class="VibeRe.Desktop.Views.ConnectionSettingsView" x:DataType="client:ConnectionSettingsViewModel">
+    <StackPanel Spacing="14">
+        <TextBlock Text="CONNECTION" Foreground="#707380" FontSize="10" LetterSpacing="1.3" />
+        <ComboBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}" IsEnabled="{Binding CanEdit}"
+                  HorizontalAlignment="Stretch" PlaceholderText="Choose a server" AutomationProperties.Name="Server" />
+        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="#A9ACBA" FontSize="12" />
+        <TextBox Text="{Binding BrowserUrl}" IsReadOnly="True" IsVisible="{Binding HasBrowserUrl}" TextWrapping="Wrap" />
+        <WrapPanel Orientation="Horizontal">
+            <Button Content="Sign in to Mistral" Command="{Binding LoginBrowserCommand}" IsVisible="{Binding NeedsLogin}" Margin="0,0,8,0" />
+            <Button Content="Refresh connection" Command="{Binding RefreshCommand}" Classes="ghost" />
+            <Button Content="Sign out" Command="{Binding LogoutCommand}" IsVisible="{Binding IsSignedIn}" Classes="ghost" />
+            <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" Classes="ghost" />
+        </WrapPanel>
+        <CheckBox Content="Require a server at startup" IsChecked="{Binding ServerRequired}" IsEnabled="{Binding CanEdit}" />
+        <CheckBox Content="Start this server locally when needed" IsChecked="{Binding StartLocalServer}" IsVisible="{Binding CanStartLocally}" IsEnabled="{Binding CanEdit}" />
+        <Expander Header="Server address and access" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="12" Margin="0,12,0,0">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <TextBox Text="{Binding ServerAddress}" PlaceholderText="Server URL" IsEnabled="{Binding CanEdit}" />
+                    <Button Grid.Column="1" Content="Save" Command="{Binding SaveAddressCommand}" />
+                    <Button Grid.Column="2" Content="Remove" Command="{Binding RemoveServerCommand}" Classes="ghost" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBox Text="{Binding ServerToken}" PasswordChar="●" PlaceholderText="Access token" IsEnabled="{Binding CanEdit}" />
+                    <Button Grid.Column="1" Content="Save token" Command="{Binding SaveTokenCommand}" />
+                </Grid>
+                <TextBlock Text="An empty value clears the saved token. Changing the address clears its token." TextWrapping="Wrap" FontSize="11" Foreground="#808390" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBox Text="{Binding PairingDeviceName}" PlaceholderText="Device name" IsEnabled="{Binding CanEdit}" />
+                    <Button Grid.Column="1" Content="Pair device" Command="{Binding PairDeviceCommand}" />
+                </Grid>
+                <StackPanel IsVisible="{Binding HasPairingChallenge}" Spacing="8">
+                    <TextBox Text="{Binding PairingApprovalCode}" IsReadOnly="True" FontSize="24" HorizontalContentAlignment="Center" />
+                    <TextBlock Text="{Binding PairingInstructions}" TextWrapping="Wrap" FontSize="12" />
+                </StackPanel>
+            </StackPanel>
+        </Expander>
+        <Expander Header="Add another server" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="10" Margin="0,12,0,0">
+                <TextBox Text="{Binding NewServerName}" PlaceholderText="Name" IsEnabled="{Binding CanEdit}" />
+                <TextBox Text="{Binding NewServerAddress}" PlaceholderText="https://" IsEnabled="{Binding CanEdit}" />
+                <Button Content="Add server" Command="{Binding AddServerCommand}" />
+            </StackPanel>
+        </Expander>
+        <Expander Header="Use a Mistral API key" IsVisible="{Binding NeedsLogin}" HorizontalAlignment="Stretch">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,12,0,0">
+                <TextBox Text="{Binding ApiKey}" PasswordChar="●" PlaceholderText="API key" IsEnabled="{Binding CanEdit}" />
+                <Button Grid.Column="1" Content="Sign in" Command="{Binding LoginApiKeyCommand}" />
+            </Grid>
+        </Expander>
+    </StackPanel>
+</UserControl>

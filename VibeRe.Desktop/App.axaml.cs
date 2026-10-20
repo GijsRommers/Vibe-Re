@@ -27,7 +27,7 @@ public class App : Application
             desktop.Exit += (_, _) => services.Dispose();
             desktop.MainWindow = new MainWindow
             {
-                DataContext = services.GetRequiredService<ConnectionSettingsViewModel>(),
+                DataContext = ActivatorUtilities.CreateInstance<VibeRe.Desktop.ViewModels.WorkspaceViewModel>(services),
                 UpdateService = new DesktopUpdateService(VelopackUpdateBackend.CreateForCurrentPlatform(),
                     new ManagedServerShutdownGuard(AppContext.BaseDirectory)),
                 ShowUpdatesOnStartup = desktop.Args?.Contains("--updates", StringComparer.Ordinal) == true
