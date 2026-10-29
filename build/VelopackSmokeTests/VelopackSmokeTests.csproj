@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <AssemblyName>VibeRe.VelopackFixture</AssemblyName>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Velopack" Version="1.2.161" />
-  </ItemGroup>
-</Project>

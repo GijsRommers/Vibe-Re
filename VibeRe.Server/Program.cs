@@ -15,17 +15,13 @@ using var managedServer = ManagedServerRegistration.TryCreateFromEnvironment();
 if (managedServer is null)
     ManagedServerShutdownGuard.EnsureUnmanagedServerCanStart(AppContext.BaseDirectory);
 
-// Managed clients can launch from any directory. Keep shipped settings and assets beside the host,
-// while still allowing a separate configuration directory (the packaging host uses the same rule).
-var webRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+// Managed clients can launch from any directory. Keep shipped settings beside the host,
+// while still allowing a separate configuration directory.
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,
-    ContentRootPath = Environment.GetEnvironmentVariable("ASPNETCORE_CONTENTROOT") ?? AppContext.BaseDirectory,
-    WebRootPath = Directory.Exists(webRoot) ? webRoot : null
+    ContentRootPath = Environment.GetEnvironmentVariable("ASPNETCORE_CONTENTROOT") ?? AppContext.BaseDirectory
 });
-// Source startup deliberately skips launch profiles; its referenced WASM assets must work in Production too.
-builder.WebHost.UseStaticWebAssets();
 
 if (string.IsNullOrEmpty(builder.Configuration["urls"]))
     builder.WebHost.UseUrls("http://localhost:5067");
@@ -83,8 +79,6 @@ app.Use(async (context, next) =>
     context.Response.Headers["Content-Security-Policy"] = "frame-ancestors 'none'; base-uri 'self'; object-src 'none'";
     await next(context);
 });
-app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
 app.MapDeviceAccess();
 app.MapHub<ProviderAuthHub>(ServerProtocol.AuthHubPath);
 
@@ -93,11 +87,6 @@ app.MapGet(ServerProtocol.ReadinessPath, () => new
 {
     application = "vibe-re", protocolVersion = ServerProtocol.Version, transport = ServerProtocol.Transport
 });
-
-// Unknown API/hub paths must remain 404, not the SPA HTML document.
-app.Map("/api/{**path}", () => Results.NotFound());
-app.Map("/hubs/{**path}", () => Results.NotFound());
-app.MapFallbackToFile("index.html");
 
 app.Run();
 

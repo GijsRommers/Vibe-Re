@@ -466,7 +466,7 @@ public class DeviceAccessIntegrationTests
         device.Cookies.SetCookies(device.Address, cookie);
         Assert.False((await device.StatusAsync()).Authorized);
         Assert.Contains("persisted-provider-key", server.Secrets.Values.Values);
-        Assert.Equal(VibeRe.Client.Application.AuthState.Authenticated, (await provider.GetStatusAsync()).State);
+        Assert.Equal(AuthState.Authenticated, (await provider.GetStatusAsync()).State);
         var devices = await admin.DevicesAsync();
         Assert.NotNull(devices.Single(item => item.Name == "First tablet").RevokedAt);
         Assert.Null(devices.Single(item => item.Name == "Second tablet").RevokedAt);

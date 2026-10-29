@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="70" height="50" viewBox="0 0 70 50">
-  <!-- Pixel emblem from https://github.com/mistralai/mistral-common/blob/main/docs/assets/logo.svg -->
-  <path fill="#FFD700" d="M10,0 H20 V10 H10 Z M50,0 H60 V10 H50 Z"/>
-  <path fill="#FFAF00" d="M10,10 H30 V20 H10 Z M40,10 H60 V20 H40 Z"/>
-  <path fill="#FF8205" d="M10,20 H60 V30 H10 Z"/>
-  <path fill="#FA500F" d="M10,30 H20 V40 H10 Z M30,30 H40 V40 H30 Z M50,30 H60 V40 H50 Z"/>
-  <path fill="#E10500" d="M0,40 H30 V50 H0 Z M40,40 H70 V50 H40 Z"/>
-</svg>

@@ -7,12 +7,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using VibeRe.Client.Application;
-using VibeRe.Client.Infrastructure;
 using VibeRe.Contracts;
 using VibeRe.Server.Application.Providers.Auth;
 using VibeRe.Server.Application.Secrets;
@@ -29,10 +26,7 @@ internal sealed class SignalRTestServer : WebApplicationFactory<Program>
     public TestBrowserFlow Browser { get; }
     public TestTimeProvider Clock { get; } = new();
     public ConcurrentQueue<string> Responses { get; } = new();
-    public ConcurrentDictionary<string, HttpContext> WebSocketRequests { get; } = new();
     public ConcurrentQueue<string> HubRequests { get; } = new();
-    public string? RedirectHubTo { get; set; }
-    public TimeSpan? KeepAliveInterval { get; set; }
     public Action<IServiceCollection>? ConfigureTestServices { get; set; }
 
     public SignalRTestServer(string? database = null, TestSecrets? secrets = null,
@@ -69,16 +63,13 @@ internal sealed class SignalRTestServer : WebApplicationFactory<Program>
             services.AddSingleton<IAuthFlow, TestAuthFlow>();
             services.AddSingleton<IBrowserAuthFlow>(Browser);
             services.AddSingleton<TimeProvider>(Clock);
-            if (KeepAliveInterval is { } interval)
-                services.Configure<HubOptions>(options => options.KeepAliveInterval = interval);
             // TestServer has no socket peer. Supply one explicitly, including hostile cases.
             services.AddSingleton<IStartupFilter>(new RemoteIpFilter(this));
             ConfigureTestServices?.Invoke(services);
         });
     }
 
-    public IVibeReClient Connect(string? token = "server-token") =>
-        new VibeReClient("http://localhost", token, new RecordingHandler(Server.CreateHandler(), Responses));
+    public HubClient Connect(string? token = "server-token") => new(CreateHub(token));
 
     public HubConnection CreateHub(string? token = "server-token") =>
         new HubConnectionBuilder().WithUrl("http://localhost" + ServerProtocol.AuthHubPath, options =>
@@ -111,18 +102,8 @@ internal sealed class SignalRTestServer : WebApplicationFactory<Program>
             {
                 context.Connection.RemoteIpAddress = server._remoteIp;
                 if (context.Request.Path.StartsWithSegments(ServerProtocol.AuthHubPath))
-                {
                     server.HubRequests.Enqueue(context.Request.Path);
-                    if (server.RedirectHubTo is { } destination)
-                    {
-                        context.Response.Redirect(destination);
-                        return;
-                    }
-                }
-                var socket = string.Equals(context.Request.Headers.Upgrade, "websocket", StringComparison.OrdinalIgnoreCase);
-                if (socket) server.WebSocketRequests[context.TraceIdentifier] = context;
-                try { await continuation(context); }
-                finally { if (socket) server.WebSocketRequests.TryRemove(context.TraceIdentifier, out _); }
+                await continuation(context);
             });
             next(app);
         };
@@ -138,6 +119,38 @@ internal sealed class SignalRTestServer : WebApplicationFactory<Program>
             return response;
         }
     }
+}
+
+// A thin hub client over the wire contract, so tests exercise the server without any client library.
+internal sealed class HubClient(HubConnection hub) : IAsyncDisposable
+{
+    private static readonly TimeSpan BrowserLoginDeadline = TimeSpan.FromSeconds(15);
+
+    public Task<AuthStatusReply> LoginAsync(string apiKey) => InvokeAsync<AuthStatusReply>("Login", apiKey);
+    public Task<AuthStatusReply> GetStatusAsync() => InvokeAsync<AuthStatusReply>("GetStatus");
+    public Task<AuthStatusReply> LogoutAsync() => InvokeAsync<AuthStatusReply>("Logout");
+
+    public async Task<BrowserLoginReply> LoginWithBrowserAsync(Func<BrowserLoginReply, Task> showBrowser)
+    {
+        var attempt = await InvokeAsync<BrowserLoginReply>("StartBrowserLogin");
+        await showBrowser(attempt);
+        using var deadline = new CancellationTokenSource(BrowserLoginDeadline);
+        var latest = attempt;
+        await foreach (var update in hub.StreamAsync<BrowserLoginReply>("WatchBrowserLogin", attempt.AttemptId, deadline.Token))
+        {
+            latest = update;
+            if (update.State != BrowserLoginState.Waiting) break;
+        }
+        return latest;
+    }
+
+    private async Task<T> InvokeAsync<T>(string method, params object?[] arguments)
+    {
+        if (hub.State == HubConnectionState.Disconnected) await hub.StartAsync();
+        return await hub.InvokeCoreAsync<T>(method, arguments);
+    }
+
+    public ValueTask DisposeAsync() => hub.DisposeAsync();
 }
 
 internal sealed class TestSecrets : ISecretStore

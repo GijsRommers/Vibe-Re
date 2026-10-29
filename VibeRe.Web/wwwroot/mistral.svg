@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 50" role="img" aria-label="Mistral">
-  <path fill="#FFD700" d="M10 0H20V10H10ZM50 0H60V10H50Z"/>
-  <path fill="#FFAF00" d="M10 10H30V20H10ZM40 10H60V20H40Z"/>
-  <path fill="#FF8205" d="M10 20H60V30H10Z"/>
-  <path fill="#FA500F" d="M10 30H20V40H10ZM30 30H40V40H30ZM50 30H60V40H50Z"/>
-  <path fill="#E10500" d="M0 40H30V50H0ZM40 40H70V50H40Z"/>
-</svg>

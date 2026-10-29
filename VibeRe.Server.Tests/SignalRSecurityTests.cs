@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using VibeRe.Server.Services;
 using Microsoft.AspNetCore.SignalR.Client;
-using VibeRe.Client.Infrastructure;
 using VibeRe.Contracts;
 using VibeRe.Server.Application.Providers.Auth;
 
@@ -170,25 +169,29 @@ public class SignalRSecurityTests
     }
 
     [Fact]
-    public async Task NativeClientAndRawSignalRRoundTripOverRealKestrelWebSockets()
+    public async Task RawSignalRClientsRoundTripOverRealKestrelWebSockets()
     {
         using var server = new SignalRTestServer();
         server.UseKestrel(0);
         using var http = server.CreateClient();
         var address = http.BaseAddress!.GetLeftPart(UriPartial.Authority);
-        using var cli = new VibeReClient(address, "server-token");
-        Assert.Equal(VibeRe.Client.Application.AuthState.Authenticated, (await cli.LoginAsync("websocket-key")).State);
-        await using var desktop = new HubConnectionBuilder().WithUrl(address + ServerProtocol.AuthHubPath, options =>
+        await using var cli = WebSocketHub(address);
+        await using var desktop = WebSocketHub(address);
+        await cli.StartAsync();
+        await desktop.StartAsync();
+        Assert.Equal(AuthState.Authenticated, (await cli.InvokeAsync<AuthStatusReply>("Login", "websocket-key")).State);
+        Assert.Equal(AuthState.Authenticated, (await desktop.InvokeAsync<AuthStatusReply>("GetStatus")).State);
+        await desktop.InvokeAsync<AuthStatusReply>("Logout");
+        Assert.Equal(AuthState.SignedOut, (await cli.InvokeAsync<AuthStatusReply>("GetStatus")).State);
+    }
+
+    private static HubConnection WebSocketHub(string address) => new HubConnectionBuilder()
+        .WithUrl(address + ServerProtocol.AuthHubPath, options =>
         {
             options.Transports = HttpTransportType.WebSockets;
             options.SkipNegotiation = true;
             options.AccessTokenProvider = () => Task.FromResult<string?>("server-token");
         }).Build();
-        await desktop.StartAsync();
-        Assert.Equal(AuthState.Authenticated, (await desktop.InvokeAsync<AuthStatusReply>("GetStatus")).State);
-        await desktop.InvokeAsync<AuthStatusReply>("Logout");
-        Assert.Equal(VibeRe.Client.Application.AuthState.SignedOut, (await cli.GetStatusAsync()).State);
-    }
 
     [Theory]
     [InlineData("CONNECT", true, 401)]
@@ -222,78 +225,6 @@ public class SignalRSecurityTests
     }
 
     [Fact]
-    public async Task NativeBrowserLoginResumesAfterServerSilenceTimeoutWithoutStartingAgain()
-    {
-        using var server = new SignalRTestServer { KeepAliveInterval = TimeSpan.FromMinutes(2) };
-        server.Browser.ExchangeResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        server.UseKestrel(0);
-        using var http = server.CreateClient();
-        using var client = new VibeReClient(http.BaseAddress!.GetLeftPart(UriPartial.Authority), "server-token");
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(55));
-        var opened = 0;
-        var login = client.LoginWithBrowserAsync(_ =>
-        {
-            Interlocked.Increment(ref opened);
-            return Task.CompletedTask;
-        }, deadline.Token);
-        await server.Browser.ExchangeStarted.Task.WaitAsync(deadline.Token);
-        // Leave the production client's 30-second timeout unchanged and withhold server pings.
-        await Task.Delay(TimeSpan.FromSeconds(35), deadline.Token);
-        server.Browser.ExchangeResult.SetResult("browser-key");
-        var result = await login;
-        Assert.Equal(VibeRe.Client.Application.BrowserLoginState.Completed, result.State);
-        Assert.True(server.HubRequests.Count >= 2, "The client must actually reconnect after server silence.");
-        Assert.Equal(1, opened);
-        Assert.Equal(1, server.Browser.StartCount);
-        Assert.Contains("browser-key", server.Secrets.Values.Values);
-    }
-
-    [Fact]
-    public async Task NativeClientNeverFollowsAWebSocketRedirectToAnotherServer()
-    {
-        using var destination = new SignalRTestServer();
-        destination.UseKestrel(0);
-        using var destinationHttp = destination.CreateClient();
-        using var source = new SignalRTestServer();
-        source.RedirectHubTo = destinationHttp.BaseAddress!.GetLeftPart(UriPartial.Authority) + ServerProtocol.AuthHubPath;
-        source.UseKestrel(0);
-        using var sourceHttp = source.CreateClient();
-        using var client = new VibeReClient(sourceHttp.BaseAddress!.GetLeftPart(UriPartial.Authority), "server-token");
-        await Assert.ThrowsAsync<VibeRe.Client.Application.ServerConnectionException>(() => client.LoginAsync("redirect-secret-key"));
-        Assert.NotEmpty(source.HubRequests);
-        Assert.Empty(destination.HubRequests);
-        Assert.Empty(destination.Secrets.Values);
-        Assert.Empty(source.Secrets.Values);
-    }
-
-    [Fact]
-    public async Task NativeBrowserLoginResumesSameAttemptAfterAbruptWebSocketDisconnect()
-    {
-        using var server = new SignalRTestServer();
-        server.Browser.PollState = BrowserPollState.Pending;
-        server.UseKestrel(0);
-        using var http = server.CreateClient();
-        using var client = new VibeReClient(http.BaseAddress!.GetLeftPart(UriPartial.Authority), "server-token");
-        var opened = 0;
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(25));
-        var login = client.LoginWithBrowserAsync(_ =>
-        {
-            Interlocked.Increment(ref opened);
-            return Task.CompletedTask;
-        }, deadline.Token);
-        await server.Browser.Polled.Task.WaitAsync(deadline.Token);
-        // Abort the Kestrel socket itself, rather than sending a graceful hub Close message.
-        Assert.Single(server.WebSocketRequests).Value.Abort();
-        server.Browser.PollState = BrowserPollState.Completed;
-        server.Clock.Advance(TimeSpan.FromSeconds(4));
-        var result = await login;
-        Assert.Equal(VibeRe.Client.Application.BrowserLoginState.Completed, result.State);
-        Assert.Equal(1, opened);
-        Assert.Equal(1, server.Browser.StartCount);
-        Assert.Contains("browser-key", server.Secrets.Values.Values);
-    }
-
-    [Fact]
     public async Task BrowserStyleQueryTokenWebSocketIsRejected()
     {
         using var server = new SignalRTestServer();
@@ -316,5 +247,4 @@ public class SignalRSecurityTests
         if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return request;
     }
-
 }

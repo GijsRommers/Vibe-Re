@@ -9,11 +9,9 @@
         <ProjectReference Include="..\VibeRe.Server.Application\VibeRe.Server.Application.csproj"/>
         <ProjectReference Include="..\VibeRe.Server.Infrastructure\VibeRe.Server.Infrastructure.csproj"/>
         <ProjectReference Include="..\VibeRe.Contracts\VibeRe.Contracts.csproj"/>
-        <ProjectReference Include="..\VibeRe.Web\VibeRe.Web.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.13" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

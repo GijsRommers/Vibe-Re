@@ -2,11 +2,8 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
-using VibeRe.Client.Application;
 using VibeRe.Contracts;
 using VibeRe.Server.Application.Providers.Auth;
-using AuthState = VibeRe.Client.Application.AuthState;
-using BrowserLoginState = VibeRe.Client.Application.BrowserLoginState;
 using WireBrowserState = VibeRe.Contracts.BrowserLoginState;
 
 namespace VibeRe.Server.Tests;
@@ -91,8 +88,8 @@ public class ProviderAuthIntegrationTests
     {
         using var server = new SignalRTestServer();
         await using var client = server.Connect(token);
-        var error = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginAsync("valid-key"));
-        Assert.Equal(HttpStatusCode.Unauthorized, Assert.IsType<HttpRequestException>(error.InnerException).StatusCode);
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => client.LoginAsync("valid-key"));
+        Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
         Assert.Empty(server.Secrets.Values);
         server.AssertResponsesExclude("valid-key", "server-token");
     }
@@ -102,11 +99,9 @@ public class ProviderAuthIntegrationTests
     {
         using var server = new SignalRTestServer();
         await using var client = server.Connect();
-        var invalid = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginAsync(""));
-        Assert.IsType<HubException>(invalid.InnerException);
+        await Assert.ThrowsAsync<HubException>(() => client.LoginAsync(""));
         server.Secrets.Fail = true;
-        var failed = await Assert.ThrowsAsync<ServerConnectionException>(() => client.LoginAsync("valid-key"));
-        Assert.IsType<HubException>(failed.InnerException);
+        var failed = await Assert.ThrowsAsync<HubException>(() => client.LoginAsync("valid-key"));
         Assert.DoesNotContain("sensitive-storage-value", failed.ToString());
         server.AssertResponsesExclude("sensitive-storage-value", "valid-key");
     }
